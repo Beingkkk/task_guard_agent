@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# venv（项目运行时环境通过 scripts 重建，不提交）
+python-runtime/
+
+# 数据目录（运行时生成）
+data/
+
+# 配置（含敏感信息）
+config.yaml
+tasks.yaml
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/

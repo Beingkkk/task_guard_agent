@@ -30,3 +30,9 @@ class StorageError(TaskGuardError):
     """Raised when reading/writing persistent state fails."""
 
     code: str = "storage_error"
+
+
+class CollectionError(TaskGuardError):
+    """Raised when a collector fails to read log or process data."""
+
+    code: str = "collection_error"

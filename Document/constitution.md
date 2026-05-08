@@ -4,6 +4,28 @@
 
 ---
 
+## 0. SDD（Spec-Driven Development）开发范式
+
+本项目严格遵循规范驱动开发范式。任何功能开发必须按以下流程执行：
+
+| 阶段 | 产出物 | 说明 |
+|---|---|---|
+| 1. 需求分析 | FR 编号 | 从 `Document/spec.md` 提取 FR，明确范围与验收标准 |
+| 2. 拆解 | `Document/FR-<N>/plan.md` + `tasks.md` | 技术计划与 TDD 任务分解 |
+| 3. 设计 | plan.md §数据模型 + §API 契约 | 偏离 spec 时写 `Document/adr/` |
+| 4. 任务规划 | tasks.md 依赖图 | 红测先行 → 实现 → 集成；`[P]` 标注可并行任务 |
+| 5. 编码执行 | 代码 + commit | 必须引用 FR 编号（footer: `Relates-to: FR-N`） |
+| 6. 测试 | `pytest` + `ruff` + `mypy` | 全绿是**提交前置条件**，不是后置检查 |
+| 7. 反馈 | 绿色 commit 历史 | 每个 commit 点可独立构建，便于 bisect |
+| 8. 实施部署 | Smoke Test | `plan.md §16` 全通 + 静态检查全绿 = FR 退出条件 |
+
+**禁止项：**
+- 跳过 `plan.md`/`tasks.md` 直接编码
+- 无测试覆盖提交实现代码
+- 一个 commit 混合多个 FR 的变更
+
+---
+
 ## 1. 运行时环境
 
 ### 1.1 专用 Python 运行时
@@ -396,7 +418,7 @@ htmlcov/
 
 ---
 
-## 11. 提交前检查清单
+## 12. 提交前检查清单
 
 ```bash
 # 每次提交前必须执行
@@ -408,7 +430,7 @@ pytest
 
 ---
 
-## 11. 快速开始
+## 13. 快速开始
 
 ```powershell
 # 1. 激活环境

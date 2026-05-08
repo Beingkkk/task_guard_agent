@@ -59,12 +59,21 @@ python check_db.py
 
 ## FR Planning Documents
 
-The project follows SDD (Spec-Driven Development). Each FR has a planning directory under `Document/FR-<N>/`:
+The project strictly follows **SDD (Spec-Driven Development)**. Every feature must go through the full pipeline: requirements analysis → decomposition → design → task planning → coding → testing → feedback → deployment. Skipping planning documents is prohibited.
+
+Each FR has a planning directory under `Document/FR-<N>/`:
 
 - `Document/spec.md` — Full functional spec. Any code change involving FRs must reference the FR number in commits/PRs.
-- `Document/constitution.md` — Python development constraints: Ruff + mypy + pytest setup, naming conventions, commit/PR conventions (Conventional Commits), branch strategy (`main` protected, PR-only), `.gitignore` rules.
-- `Document/FR-<N>/plan.md` — Technical plan for the FR: scope, data model, API contracts, risks.
-- `Document/FR-<N>/tasks.md` — TDD task breakdown with dependency graph and parallel execution markers.
+- `Document/constitution.md` — Python development constraints **and** the SDD workflow mandate.
+- `Document/FR-<N>/plan.md` — Technical plan: scope, data model, API contracts, architecture decisions, risks, Smoke Test script (§16).
+- `Document/FR-<N>/tasks.md` — TDD task breakdown with dependency graph, `[P]` parallel markers, and exit criteria.
+
+**SDD workflow in practice:**
+1. Extract FR from spec.md → define acceptance criteria
+2. Write `plan.md` (data model + contracts) before any code
+3. Write `tasks.md` with red tests first → implementation → integration
+4. Commit on green build points only (pytest + ruff + mypy all pass)
+5. FR exit: Smoke Test (plan.md §16) passes + static checks green
 
 If implementation diverges from spec, write an ADR in `Document/adr/`.
 

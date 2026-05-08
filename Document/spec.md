@@ -214,7 +214,7 @@
 ├─────────────────────────────────────────────────────────────┤
 │                    调度层 (Orchestrator)                      │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │              Agent Main Loop (定时驱动)                   ││
+│  │              AgentHarness (定时驱动 + 顺序管道)             ││
 │  │   每 30s 触发采集 → 检测异常 → 触发告警 / 现场留存         ││
 │  │   飞书消息 → 解析命令/意图 → 调用 Tool → 回复用户          ││
 │  └─────────────────────────────────────────────────────────┘│
@@ -242,18 +242,19 @@
 
 ### 4.2 核心模块设计
 
-#### 4.2.1 Agent Main Loop
+#### 4.2.1 AgentHarness
 
-参考 OpenClaw 的 `AgentHarness` 模式，主循环为**事件驱动 + 定时触发**的混合模型。核心流程：
+参考 OpenClaw 的 `AgentHarness` 模式，采用**定时驱动 + 顺序管道**模型。Harness 本身不执行业务逻辑，只负责生命周期编排和注入点管理。核心流程：
 
-1. **初始化**：加载 `tasks_state.json` 恢复任务 → 启动各任务采集器
-2. **定时采集循环**（默认 30s）：遍历所有任务 → 采集日志增量 + 进程指标 → 正则提取进度 → LLM fallback → 异常检测 → 触发告警
-3. **消息处理循环**：监听 CLI/飞书输入 → 解析命令/意图 → 调用 Tool Registry → 返回结果
+1. **Boot**：加载 `tasks_state.json` 恢复任务 → 打开 SQLite → 注册 Collector
+2. **定时采集循环**（默认 30s）：遍历所有任务 → 采集日志增量 + 进程指标 → 注入分析（FR-3）→ 注入告警评估（FR-4）→ 持久化
+3. **消息处理循环**（FR-6/7，独立运行）：监听 CLI/飞书输入 → 解析命令/意图 → 调用 Tool Registry → 返回结果
 
 关键设计点：
 - 采集、分析、告警三个环节串行执行，同一任务内不并发，避免状态竞争
 - LLM 调用受 `llm_min_interval` 限制，且正则成功时跳过
 - 崩溃检测在采集后立即执行，现场留存与告警发送并行
+- Harness 提供 `analyzer` / `alerter` / `crash_handler` 三个注入点属性，后续 FR 通过赋值接入，不修改 Harness 代码
 
 #### 4.2.2 Tool Registry
 
@@ -335,7 +336,18 @@
 
 ## 5. 配置文件
 
-### 5.1 Agent 主配置（`config.yaml`）
+所有配置文件统一存放在 `config/` 目录（与 `data/` 分离：配置面向用户/运维，数据为软件运行时内部产物）。
+
+| 路径 | 说明 | 谁维护 |
+|---|---|---|
+| `config/config.yaml` | Agent 主配置（采集周期、告警阈值、LLM、飞书） | 用户/运维 |
+| `config/tasks.yaml` | 任务定义（注册时加载并与 JSON 合并） | 用户/运维 |
+| `config/llm_config_<provider>.json` | LLM Provider 特化配置（如 prompt 模板、模型参数） | 开发者/运维 |
+| `config/feishu_config.yaml` | 飞书 Bot 配置（v0.2 Event Bot 阶段使用） | 用户/运维 |
+
+> `data/` 目录存放运行时内部数据（`tasks_state.json`、`metrics.db`、`crash_dumps/`），`.gitignore` 排除，**不由用户直接编辑**。
+
+### 5.1 Agent 主配置（`config/config.yaml`）
 
 ```yaml
 agent:
@@ -371,7 +383,7 @@ feishu:
   # v0.2: app_id, app_secret, encrypt_key
 ```
 
-### 5.2 任务配置（`tasks.yaml`）
+### 5.2 任务配置（`config/tasks.yaml`）
 
 ```yaml
 tasks:
@@ -418,7 +430,13 @@ taskguard/
 │   ├── storage/                # JSON 状态 + SQLite 历史
 │   └── utils/                  # Windows 特化工具
 │
-├── data/                       # .gitignore
+├── config/                     # 用户配置（受版本控制）
+│   ├── config.yaml
+│   ├── tasks.yaml
+│   ├── llm_config_claude.json
+│   └── feishu_config.yaml
+│
+├── data/                       # 运行时内部数据（.gitignore）
 │   ├── tasks_state.json
 │   ├── metrics.db
 │   └── crash_dumps/

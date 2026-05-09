@@ -273,10 +273,12 @@
 
 #### 4.2.3 Provider 抽象层
 
-参考 OpenClaw 的 Provider 抽象：
+参考 OpenClaw 的 Provider 抽象，采用**统一接口 + 协议翻译**模式：
 
-- `BaseProvider` 接口：`complete(system, messages, tools)` 返回 `LLMResponse(content, usage, finish_reason)`
-- `ClaudeProvider` 实现：基于 Anthropic SDK，v0.1 仅实现 Messages API
+- `BaseProvider` 接口：`complete(system, messages, tools)` 返回 `LLMResponse(content, tool_calls, usage, finish_reason)`
+- `ClaudeProvider` 实现：基于 Anthropic SDK，支持 Messages API + tool use
+- `OpenAIProvider` 实现：基于 `httpx` 手写 OpenAI chat.completions 协议，兼容 kimi 等 OpenAI-compatible 端点
+- `create_provider(config)` 工厂：根据配置自动选择 Provider 实现
 - **Prompt 缓存**：System Prompt 固定启用 caching；每次仅传入新日志增量；进度提取和意图解析各用独立 system prompt
 
 #### 4.2.4 采集器设计

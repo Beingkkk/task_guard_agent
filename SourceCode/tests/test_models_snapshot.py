@@ -56,4 +56,4 @@ class TestSnapshot:
 class TestProgressInfo:
     def test_placeholder_construction(self) -> None:
         p = ProgressInfo()
-        assert p.percent is None
+        assert p.percentage is None

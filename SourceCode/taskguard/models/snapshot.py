@@ -5,6 +5,7 @@ Relates-to: FR-2
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Literal
 
 __all__ = ["ProcessInfo", "ProgressInfo", "Snapshot"]
 
@@ -21,9 +22,15 @@ class ProcessInfo:
 
 @dataclass(slots=True)
 class ProgressInfo:
-    """Progress extraction result (placeholder for FR-3)."""
+    """Progress extraction result (FR-3)."""
 
-    percent: float | None = None
+    percentage: float | None = None
+    speed: str | None = None
+    eta: str | None = None
+    status: Literal["normal", "stalled", "error", "complete", "unknown"] = "unknown"
+    raw_summary: str = ""
+    confidence: float = 0.0
+    extracted_by: Literal["regex", "llm"] | None = None
 
 
 @dataclass(slots=True)

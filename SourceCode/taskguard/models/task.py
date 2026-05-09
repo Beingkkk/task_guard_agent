@@ -23,6 +23,7 @@ class TaskConfig:
     cpu_warning: int = 90
     memory_warning: int = 80
     memory_critical: int = 95
+    tool_hint: str | None = None
 
 
 @dataclass(slots=True)
@@ -64,6 +65,7 @@ class Task:
                 "cpu_warning": self.config.cpu_warning,
                 "memory_warning": self.config.memory_warning,
                 "memory_critical": self.config.memory_critical,
+                "tool_hint": self.config.tool_hint,
             },
             "source": self.source,
         }
@@ -88,6 +90,7 @@ class Task:
             cpu_warning=config_data.get("cpu_warning", 90),
             memory_warning=config_data.get("memory_warning", 80),
             memory_critical=config_data.get("memory_critical", 95),
+            tool_hint=config_data.get("tool_hint"),
         )
 
         created_raw = data.get("created_at")

@@ -96,7 +96,14 @@ class AgentHarness:
 
         # Injection point-2: analyzer
         if self.analyzer is not None:
-            snapshot.progress = await self.analyzer.analyze(task, snapshot)
+            try:
+                snapshot.progress = await self.analyzer.analyze(task, snapshot)
+                if snapshot.progress is not None:
+                    await self._metrics_store.save_progress(
+                        task.alias, snapshot.timestamp, snapshot.progress
+                    )
+            except Exception:
+                logger.exception("Analyzer failed for %s", task.alias)
 
         await self._metrics_store.save_snapshot(snapshot)
 

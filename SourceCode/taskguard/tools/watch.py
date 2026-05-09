@@ -50,7 +50,18 @@ class WatchTaskTool(BaseTool):
                     ok=False, error_code="invalid_pid", message=f"PID must be an integer: {pid_raw}"
                 )
 
-        task = Task(alias=alias, log_source=log_source, pid=pid)
+        tool_hint = params.get("tool_hint")
+        if tool_hint:
+            from taskguard.models.task import TaskConfig
+
+            task = Task(
+                alias=alias,
+                log_source=log_source,
+                pid=pid,
+                config=TaskConfig(tool_hint=tool_hint),
+            )
+        else:
+            task = Task(alias=alias, log_source=log_source, pid=pid)
         try:
             await self._store.add(task)
         except TaskRegistrationError as exc:

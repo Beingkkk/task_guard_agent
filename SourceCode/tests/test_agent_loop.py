@@ -10,7 +10,7 @@ import pytest
 
 from taskguard.agent import AgentHarness
 from taskguard.models import CollectionError
-from taskguard.models.snapshot import ProcessInfo, Snapshot
+from taskguard.models.snapshot import ProcessInfo, ProgressInfo, Snapshot
 from taskguard.models.task import LogSource, Task
 
 
@@ -182,4 +182,92 @@ class TestExceptionIsolation:
         assert mock_metrics_store.save_snapshot.call_count == 1
         saved = mock_metrics_store.save_snapshot.call_args[0][0]
         assert saved.task_alias == "good"
+        await harness._cleanup()
+
+
+class TestAnalyzerInjection:
+    async def test_analyzer_called_and_progress_saved(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        from taskguard.models.snapshot import ProgressInfo
+
+        mock_metrics_store.save_progress = AsyncMock()
+        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"))
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("bash", mock_collector)
+
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze = AsyncMock(
+            return_value=ProgressInfo(percentage=50.0, extracted_by="regex")
+        )
+        harness.analyzer = mock_analyzer
+
+        await harness.run_once()
+
+        mock_analyzer.analyze.assert_awaited_once()
+        mock_metrics_store.save_progress.assert_awaited_once()
+        await harness._cleanup()
+
+    async def test_analyzer_returns_none_no_save_progress(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        mock_metrics_store.save_progress = AsyncMock()
+        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"))
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=[])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("bash", mock_collector)
+
+        mock_analyzer = MagicMock()
+        mock_analyzer.analyze = AsyncMock(return_value=None)
+        harness.analyzer = mock_analyzer
+
+        await harness.run_once()
+
+        mock_metrics_store.save_progress.assert_not_awaited()
+        await harness._cleanup()
+
+    async def test_analyzer_exception_isolated(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        mock_metrics_store.save_progress = AsyncMock()
+        t1 = Task(alias="bad", log_source=LogSource(type="bash", command=""))
+        t2 = Task(alias="good", log_source=LogSource(type="bash", command="echo ok"))
+        mock_store.list_all.return_value = [t1, t2]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+
+        async def side_effect(task: Task) -> list[str]:
+            if task.alias == "bad":
+                return ["bad line"]
+            return ["ok"]
+
+        mock_collector.collect_logs = AsyncMock(side_effect=side_effect)
+        mock_collector.close = AsyncMock()
+        harness.register_collector("bash", mock_collector)
+
+        mock_analyzer = MagicMock()
+
+        async def analyze_side_effect(task: Task, snapshot: Snapshot) -> ProgressInfo | None:
+            if task.alias == "bad":
+                raise RuntimeError("analyzer boom")
+            return ProgressInfo(percentage=99.0, extracted_by="regex")
+
+        mock_analyzer.analyze = AsyncMock(side_effect=analyze_side_effect)
+        harness.analyzer = mock_analyzer
+
+        await harness.run_once()
+
+        # Both tasks should have save_snapshot called, only good has save_progress
+        assert mock_metrics_store.save_snapshot.call_count == 2
+        assert mock_metrics_store.save_progress.call_count == 1
         await harness._cleanup()

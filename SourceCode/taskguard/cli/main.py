@@ -36,6 +36,31 @@ def _format_list(tasks: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+_KNOWN_TOOLS = ["wget", "rsync", "aria2", "curl"]
+
+
+def _detect_tool(command: str) -> str | None:
+    """Scan command string for known tool keywords."""
+    found = [t for t in _KNOWN_TOOLS if t in command.lower()]
+    return found[0] if len(found) == 1 else None
+
+
+def _interactive_tool_hint() -> str | None:
+    """Prompt user to select a tool type."""
+    typer.echo("无法自动识别日志工具类型。请选择：")
+    for i, t in enumerate(_KNOWN_TOOLS, 1):
+        typer.echo(f"  {i}. {t}")
+    typer.echo(f"  {len(_KNOWN_TOOLS) + 1}. 其他 / 不指定")
+    try:
+        choice = input("> ").strip()
+        idx = int(choice) - 1
+        if 0 <= idx < len(_KNOWN_TOOLS):
+            return _KNOWN_TOOLS[idx]
+    except (ValueError, EOFError):
+        pass
+    return None
+
+
 def _exit_code_for(result: ToolResult) -> int:
     if result.ok:
         return 0
@@ -66,6 +91,7 @@ def watch(
     alias: Annotated[str, typer.Argument(help="任务别名")],
     log: Annotated[str, typer.Option(help="日志源路径（file:// 或 bash://）")],
     pid: Annotated[int | None, typer.Option(help="进程 PID")] = None,
+    tool: Annotated[str | None, typer.Option(help="显式标注工具类型（如 wget, rsync）")] = None,
 ) -> None:
     """注册监控任务。"""
     data = _data_dir()
@@ -75,8 +101,25 @@ def watch(
 
     async def _run() -> None:
         await store.load()
-        tool = ToolRegistry.get("watch_task")
-        result = await tool.execute({"alias": alias, "log": log, "pid": pid, "_store": store})
+
+        tool_hint = tool
+        if tool_hint is None:
+            from taskguard.utils.log_source_uri import LogSource as LogSourceParser
+
+            try:
+                log_source = LogSourceParser.from_uri(log)
+            except ValueError:
+                log_source = None
+
+            if log_source is not None and log_source.type == "bash" and log_source.command:
+                detected = _detect_tool(log_source.command)
+                tool_hint = detected or _interactive_tool_hint()
+
+        tool_obj = ToolRegistry.get("watch_task")
+        params: dict[str, Any] = {"alias": alias, "log": log, "pid": pid, "_store": store}
+        if tool_hint is not None:
+            params["tool_hint"] = tool_hint
+        result = await tool_obj.execute(params)
         _handle_result(result, lambda d: f"Registered task '{d.alias}'")
 
     asyncio.run(_run())

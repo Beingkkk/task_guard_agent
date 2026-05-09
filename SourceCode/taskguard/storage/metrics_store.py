@@ -1,6 +1,6 @@
 """SQLite-backed metrics and logs store.
 
-Relates-to: FR-2
+Relates-to: FR-2, FR-3
 """
 
 import json
@@ -10,7 +10,7 @@ from typing import Any
 
 import aiosqlite
 
-from taskguard.models.snapshot import Snapshot
+from taskguard.models.snapshot import ProgressInfo, Snapshot
 
 __all__ = ["MetricsStore"]
 
@@ -32,6 +32,32 @@ CREATE TABLE IF NOT EXISTS metrics (
     status TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_alias_time ON metrics(alias, timestamp);
+
+CREATE TABLE IF NOT EXISTS progress (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    percentage REAL,
+    speed TEXT,
+    eta TEXT,
+    status TEXT,
+    raw_summary TEXT,
+    confidence REAL,
+    extracted_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_progress_alias_time ON progress(alias, timestamp);
+
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    model TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    latency_ms INTEGER,
+    error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_alias_time ON llm_usage(alias, timestamp);
 """
 
 
@@ -128,6 +154,120 @@ class MetricsStore:
         else:
             query = (
                 "SELECT id, alias, timestamp, cpu_percent, memory_working_set, status FROM metrics "
+                "WHERE alias = ? AND timestamp >= ? ORDER BY timestamp"
+            )
+            params = (alias, since_str)
+        async with self._conn.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            cols = [d[0] for d in cursor.description]
+            return [dict(zip(cols, row, strict=False)) for row in rows]
+
+    async def save_progress(
+        self,
+        alias: str,
+        timestamp: datetime,
+        progress: ProgressInfo,
+    ) -> None:
+        """Persist a progress extraction result."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        ts = timestamp.isoformat()
+        async with self._conn.execute(
+            "INSERT INTO progress (alias, timestamp, percentage, speed, eta, status, raw_summary, confidence, extracted_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                alias,
+                ts,
+                progress.percentage,
+                progress.speed,
+                progress.eta,
+                progress.status,
+                progress.raw_summary,
+                progress.confidence,
+                progress.extracted_by,
+            ),
+        ):
+            pass
+        await self._conn.commit()
+
+    async def save_llm_usage(
+        self,
+        alias: str,
+        timestamp: datetime,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        latency_ms: int,
+        error: str | None = None,
+    ) -> None:
+        """Persist an LLM usage record."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        ts = timestamp.isoformat()
+        async with self._conn.execute(
+            "INSERT INTO llm_usage (alias, timestamp, model, input_tokens, output_tokens, latency_ms, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                alias,
+                ts,
+                model,
+                input_tokens,
+                output_tokens,
+                latency_ms,
+                error,
+            ),
+        ):
+            pass
+        await self._conn.commit()
+
+    async def query_progress(
+        self,
+        alias: str,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return progress rows for alias in time range."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        since_str = since.isoformat()
+        if until is not None:
+            until_str = until.isoformat()
+            query = (
+                "SELECT id, alias, timestamp, percentage, speed, eta, status, raw_summary, confidence, extracted_by FROM progress "
+                "WHERE alias = ? AND timestamp >= ? AND timestamp <= ? "
+                "ORDER BY timestamp"
+            )
+            params: tuple[Any, ...] = (alias, since_str, until_str)
+        else:
+            query = (
+                "SELECT id, alias, timestamp, percentage, speed, eta, status, raw_summary, confidence, extracted_by FROM progress "
+                "WHERE alias = ? AND timestamp >= ? ORDER BY timestamp"
+            )
+            params = (alias, since_str)
+        async with self._conn.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            cols = [d[0] for d in cursor.description]
+            return [dict(zip(cols, row, strict=False)) for row in rows]
+
+    async def query_llm_usage(
+        self,
+        alias: str,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return LLM usage rows for alias in time range."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        since_str = since.isoformat()
+        if until is not None:
+            until_str = until.isoformat()
+            query = (
+                "SELECT id, alias, timestamp, model, input_tokens, output_tokens, latency_ms, error FROM llm_usage "
+                "WHERE alias = ? AND timestamp >= ? AND timestamp <= ? "
+                "ORDER BY timestamp"
+            )
+            params: tuple[Any, ...] = (alias, since_str, until_str)
+        else:
+            query = (
+                "SELECT id, alias, timestamp, model, input_tokens, output_tokens, latency_ms, error FROM llm_usage "
                 "WHERE alias = ? AND timestamp >= ? ORDER BY timestamp"
             )
             params = (alias, since_str)

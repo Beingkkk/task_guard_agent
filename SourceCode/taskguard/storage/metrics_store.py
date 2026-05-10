@@ -275,3 +275,13 @@ class MetricsStore:
             rows = await cursor.fetchall()
             cols = [d[0] for d in cursor.description]
             return [dict(zip(cols, row, strict=False)) for row in rows]
+
+    async def get_last_collect_time(self) -> datetime | None:
+        """Return the timestamp of the most recent metrics record, or None if empty."""
+        if self._conn is None:
+            return None
+        async with self._conn.execute("SELECT MAX(timestamp) FROM metrics") as cursor:
+            row = await cursor.fetchone()
+            if row and row[0]:
+                return datetime.fromisoformat(row[0])
+        return None

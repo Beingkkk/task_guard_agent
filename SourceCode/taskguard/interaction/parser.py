@@ -31,6 +31,7 @@ class CommandParser:
         "list": "list_tasks",
         "status": "query_status",
         "progress": "query_progress",
+        "cleanup": "cleanup_exited",
         "help": "help",
     }
 

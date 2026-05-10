@@ -117,7 +117,44 @@
 
 4. **上下文窗口**：每次调用仅传入最近 N 行日志（默认 50 行），避免上下文过长。
 
-### FR-4 告警与异常检测
+### FR-4 用户体验与交互层
+
+1. **交互式 Shell 模式**：
+   - `taskguard` 无参数时进入交互式 shell（而非显示帮助信息）。
+   - 启动时显示 Agent 状态摘要（banner、数据目录、采集间隔、已注册任务数）。
+   - `AgentHarness` 在后台异步运行采集循环，用户可在 shell 运行期间持续监控。
+   - 用户通过 `/` 前缀命令与 Agent 交互，语法与飞书命令完全一致。
+   - 支持 `exit` / `quit` / `q` 优雅退出，自动停止后台 Harness 并关闭资源。
+
+2. **基本指令支持**：
+   | 命令 | 功能 | 示例 |
+   |---|---|---|
+   | `/watch <别名> --log <uri>` | 注册监控任务 | `/watch 下载A --log bash://wget -c http://a.com/f.zip` |
+   | `/unwatch <别名>` | 注销监控任务 | `/unwatch 下载A` |
+   | `/list` | 列出所有任务 | `/list` |
+   | `/status <别名>` | 查询任务详情 | `/status 下载A` |
+   | `/progress <别名>` | 查询最新进度（SQLite） | `/progress 下载A` |
+   | `/help` | 显示帮助 | `/help` |
+   | `exit` | 退出 Agent | `exit` |
+
+3. **自然语言意图解析（命令转换）**：
+   用户可通过自然语言描述操作意图，Agent 通过轻量级 LLM 调用将其解析为结构化指令并执行对应 Tool：
+   - "帮我监控下载A，用 wget 下载 example.com/file.zip" → `watch_task`
+   - "现在有哪些任务在跑？" → `list_tasks`
+   - "停止监控下载A" → `unwatch_task`
+
+   实现要点：
+   - 复用 FR-3 的 Provider 抽象层，独立 system prompt 专注于命令意图识别。
+   - 解析输出统一为 `{"intent": "<tool_name>", "params": {...}}`，直接传入 ToolRegistry。
+   - 意图模糊或参数缺失时，Agent 应主动追问（如未提供 PID 时询问是否仅监控日志）。
+   - 与飞书 Event Bot（FR-8）共享同一套 Intent Parser，避免重复实现。
+
+4. **命令解析器抽象层**：
+   - CLI 交互式 shell 和飞书 Event Bot（FR-8）共享同一套参数解析逻辑。
+   - 解析器输出统一的 `dict[str, Any]` 参数包，直接传入 `ToolRegistry.get(name).execute(params)`。
+   - 新增交互通道（如 Web UI）只需实现解析器适配，无需改动 Tool 逻辑。
+
+### FR-5 告警与异常检测
 
 1. **告警规则引擎**（可配置阈值）：
    | 规则 | 默认阈值 | 级别 |
@@ -142,7 +179,7 @@
    - 最近 10 行日志摘要
    - 可选：一键查看完整日志按钮（v0.2）
 
-### FR-5 OOM/崩溃现场留存
+### FR-6 OOM/崩溃现场留存
 
 1. **触发条件**：
    - 进程 PID 消失且退出码非 0
@@ -160,7 +197,7 @@
    - 最多保留 `max_crash_dumps`（默认 10）个现场，超出时删除最早的
    - 飞书告警附带现场摘要和文件路径
 
-### FR-6 自然语言查询
+### FR-7 自然语言查询
 
 用户通过飞书发送自然语言消息（非命令前缀 `/`），Agent 识别意图并回复：
 
@@ -178,7 +215,7 @@
 
 3. **v0.1 范围**：支持状态查询和简单历史查询。日志搜索和复杂分析 v0.2 扩展。
 
-### FR-7 飞书 Bot 接入层
+### FR-8 飞书 Bot 接入层
 
 1. **v0.1 - 单向推送（Webhook）**：
    - 配置飞书群机器人 Webhook URL
@@ -188,7 +225,7 @@
 
 2. **v0.2 - 双向对话（Event Bot）**：
    - 接入飞书开放平台 Event Bot，接收用户消息事件
-   - 支持自然语言查询（FR-6）
+   - 支持自然语言查询（FR-7）
    - 支持交互式按钮（查看日志、确认告警、调整阈值）
 
 3. **消息格式**：
@@ -247,8 +284,8 @@
 参考 OpenClaw 的 `AgentHarness` 模式，采用**定时驱动 + 顺序管道**模型。Harness 本身不执行业务逻辑，只负责生命周期编排和注入点管理。核心流程：
 
 1. **Boot**：加载 `tasks_state.json` 恢复任务 → 打开 SQLite → 注册 Collector
-2. **定时采集循环**（默认 30s）：遍历所有任务 → 采集日志增量 + 进程指标 → 注入分析（FR-3）→ 注入告警评估（FR-4）→ 持久化
-3. **消息处理循环**（FR-6/7，独立运行）：监听 CLI/飞书输入 → 解析命令/意图 → 调用 Tool Registry → 返回结果
+2. **定时采集循环**（默认 30s）：遍历所有任务 → 采集日志增量 + 进程指标 → 注入分析（FR-3）→ 注入告警评估（FR-5）→ 持久化
+3. **消息处理循环**（FR-7/8，独立运行）：监听 CLI/飞书输入 → 解析命令/意图 → 调用 Tool Registry → 返回结果
 
 关键设计点：
 - 采集、分析、告警三个环节串行执行，同一任务内不并发，避免状态竞争
@@ -344,7 +381,8 @@
 |---|---|---|
 | `config/config.yaml` | Agent 主配置（采集周期、告警阈值、LLM、飞书） | 用户/运维 |
 | `config/tasks.yaml` | 任务定义（注册时加载并与 JSON 合并） | 用户/运维 |
-| `config/llm_config_<provider>.json` | LLM Provider 特化配置（如 prompt 模板、模型参数） | 开发者/运维 |
+| `config/config-claude.json` | Claude Provider 配置（`auth_key`、`llm_base_url`、`model_name`） | 开发者/运维 |
+| `config/config-openai.json` | OpenAI-compatible Provider 配置（`auth_key`、`llm_base_url`、`model_name`） | 开发者/运维 |
 | `config/feishu_config.yaml` | 飞书 Bot 配置（v0.2 Event Bot 阶段使用） | 用户/运维 |
 
 > `data/` 目录存放运行时内部数据（`tasks_state.json`、`metrics.db`、`crash_dumps/`），`.gitignore` 排除，**不由用户直接编辑**。
@@ -365,9 +403,8 @@ collectors:
     buffer_max_lines: 1000
 
 llm:
-  provider: "claude"
-  model: "claude-sonnet-4-6"
-  api_key: "${CLAUDE_API_KEY}"
+  provider: "claude"           # "claude" → 读取 config-claude.json；"openai" → 读取 config-openai.json
+  model: "claude-sonnet-4-6"   # 覆盖 JSON 中的 model_name；留空则使用 JSON 中的值
   min_interval: 60
   max_log_lines: 50
 
@@ -435,7 +472,8 @@ taskguard/
 ├── config/                     # 用户配置（受版本控制）
 │   ├── config.yaml
 │   ├── tasks.yaml
-│   ├── llm_config_claude.json
+│   ├── config-claude.json      # Claude Provider 配置
+│   ├── config-openai.json      # OpenAI-compatible Provider 配置
 │   └── feishu_config.yaml
 │
 ├── data/                       # 运行时内部数据（.gitignore）

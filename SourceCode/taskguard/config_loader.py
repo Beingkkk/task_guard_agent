@@ -34,32 +34,42 @@ class AppConfig:
 
 
 class ConfigLoader:
-    """Loads and merges config.yaml and llm_config_claude.json."""
+    """Loads and merges config.yaml and config-{provider}.json.
+
+    ``llm.provider`` in config.yaml selects the JSON file:
+    - ``"claude"`` (default) → ``config-claude.json``
+    - ``"openai"`` → ``config-openai.json``
+    """
 
     @classmethod
     def load(cls, config_dir: Path) -> AppConfig:
         config_path = config_dir / "config.yaml"
-        llm_path = config_dir / "llm_config_claude.json"
 
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        if not llm_path.exists():
-            raise FileNotFoundError(f"LLM config file not found: {llm_path}")
 
         with open(config_path, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
 
+        llm_cfg = raw.get("llm", {})
+        provider = llm_cfg.get("provider", "claude")
+
+        # Select JSON config based on provider (default: claude)
+        json_name = "config-claude.json" if provider == "claude" else "config-openai.json"
+        llm_path = config_dir / json_name
+
+        if not llm_path.exists():
+            raise FileNotFoundError(f"LLM config file not found: {llm_path}")
+
         with open(llm_path, encoding="utf-8") as f:
             llm_raw = json.load(f)
 
-        llm_cfg = raw.get("llm", {})
-
-        # Merge rules: yaml overrides json for most fields
-        # api_key and base_url come from json only (v0.1)
+        # Merge rules: yaml overrides json for model name
+        # api_key and base_url come from json only
         model_name = llm_cfg.get("model", llm_raw.get("model_name", ""))
 
         llm = LLMConfig(
-            provider=llm_cfg.get("provider", "claude"),
+            provider=provider,
             model=model_name,
             api_key=llm_raw.get("auth_key", ""),
             base_url=llm_raw.get("llm_base_url"),

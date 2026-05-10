@@ -55,6 +55,14 @@ pytest tests/test_models_snapshot.py tests/test_collectors_bash.py tests/test_co
 
 # Verify SQLite data after Smoke Test
 python check_db.py
+
+# Run checks (from checks/ directory)
+cd checks && python check_llm.py --provider openai   # Test LLM connection
+cd checks && python check_fr3.py --skip-llm          # Regex + SQLite only (no tokens)
+cd checks && python check_fr3.py                     # Full end-to-end (consumes tokens)
+
+# Run FR-3 tests only
+pytest tests/test_models_progress.py tests/test_llm_*.py tests/test_analyzers_*.py tests/test_config_loader.py tests/test_storage_progress.py -v
 ```
 
 ## FR Planning Documents
@@ -83,10 +91,11 @@ User-facing configuration lives in `SourceCode/config/` (tracked by git):
 
 ```
 config/
-├── config.yaml             # Agent main config (interval, thresholds, LLM, Feishu)
+├── config.yaml             # Agent main config (interval, thresholds, LLM provider selector)
+├── config-claude.json      # Claude Provider config (auth_key, base_url, model_name)
+├── config-openai.json      # OpenAI-compatible Provider config (e.g., kimi)
 ├── tasks.yaml              # Task definitions (loaded at boot, merged with JSON)
-├── llm_config_claude.json  # LLM Provider config (FR-3+)
-└── feishu_config.yaml      # Feishu Bot config (FR-7+)
+└── feishu_config.yaml      # Feishu Bot config (FR-8+)
 ```
 
 Runtime data lives in `SourceCode/data/` (gitignored):
@@ -95,7 +104,7 @@ Runtime data lives in `SourceCode/data/` (gitignored):
 data/
 ├── tasks_state.json     # Task registry (JSON, versioned, atomic writes)
 ├── metrics.db           # SQLite time-series (FR-2+)
-└── crash_dumps/         # OOM scene dumps (FR-5+)
+└── crash_dumps/         # OOM scene dumps (FR-6+)
 ```
 
 `tasks_state.json` is written only on task mutations (register/unregister/YAML merge), never during the collection cycle.
@@ -123,7 +132,7 @@ Interface (cli/, feishu/)
 
 **Regex-before-LLM pipeline.** Progress extraction prefers regex templates for known tools (wget, rsync, aria2, curl). LLM extraction is a fallback triggered only when regex fails or confidence is low, and is rate-limited per-task (`llm_min_interval`). This is the primary cost-control mechanism.
 
-**定时驱动 + 顺序管道 + 属性注入点.** The `AgentHarness` runs a periodic collect cycle (default 30s): collects log deltas + process metrics → builds Snapshot → applies injection points (`analyzer`, `alerter`, `crash_handler`) → persists to SQLite. Collection, analysis, and alerting are sequential per-task to avoid state races. FR-3/4/5 extend behavior by assigning instances to Harness properties, not by modifying Harness code.
+**定时驱动 + 顺序管道 + 属性注入点.** The `AgentHarness` runs a periodic collect cycle (default 30s): collects log deltas + process metrics → builds Snapshot → applies injection points (`analyzer`, `alerter`, `crash_handler`) → persists to SQLite. Collection, analysis, and alerting are sequential per-task to avoid state races. FR-3/5/6 extend behavior by assigning instances to Harness properties, not by modifying Harness code.
 
 ### Data Flow
 
@@ -142,10 +151,11 @@ Interface (cli/, feishu/)
 
 - **FR-1** (Task registry, CLI, ToolRegistry) — Complete
 - **FR-2** (Periodic collection: BashCollector, FileCollector, ProcessCollector, MetricsStore, AgentHarness) — Complete
-- **FR-3** (AnalyzerPipeline with regex + LLM fallback) — Not started; assign to `AgentHarness.analyzer`
-- **FR-4** (AlertEngine with cooldown/escalation) — Not started; assign to `AgentHarness.alerter`
-- **FR-5** (CrashDumper for OOM scene preservation) — Not started; assign to `AgentHarness.crash_handler`
-- **FR-6+** — See `Document/spec.md`
+- **FR-3** (AnalyzerPipeline with regex + LLM fallback) — Complete; assigned to `AgentHarness.analyzer`
+- **FR-4** (UX & Interaction Layer: interactive shell, intent parsing) — Not started
+- **FR-5** (AlertEngine with cooldown/escalation) — Not started; assign to `AgentHarness.alerter`
+- **FR-6** (CrashDumper for OOM scene preservation) — Not started; assign to `AgentHarness.crash_handler`
+- **FR-7+** — See `Document/spec.md`
 
 ## Starting the AgentHarness
 
@@ -160,6 +170,12 @@ from taskguard.agent import AgentHarness
 from taskguard.collectors.bash_collector import BashCollector
 from taskguard.collectors.file_collector import FileCollector
 
+# FR-3: AnalyzerPipeline setup
+from taskguard.config_loader import ConfigLoader
+from taskguard.llm.factory import LLMConfig, create_provider
+from taskguard.analyzers.pipeline import AnalyzerPipeline
+from taskguard.analyzers.regex_extractor import RegexExtractor
+
 store = TaskStore(Path("data"))
 metrics = MetricsStore(Path("data/metrics.db"))
 harness = AgentHarness(store, metrics, collect_interval=5)
@@ -167,6 +183,22 @@ harness = AgentHarness(store, metrics, collect_interval=5)
 # Required: register collectors for each source type
 harness.register_collector("bash", BashCollector())
 harness.register_collector("file", FileCollector())
+
+# FR-3: wire analyzer (reads config, creates provider, enables regex+LLM fallback)
+cfg = ConfigLoader.load(Path("config"))
+provider = create_provider(LLMConfig(
+    provider=cfg.llm.provider,
+    model=cfg.llm.model,
+    api_key=cfg.llm.api_key,
+    base_url=cfg.llm.base_url,
+))
+harness.analyzer = AnalyzerPipeline(
+    provider=provider,
+    regex_extractor=RegexExtractor.from_builtin_templates(),
+    llm_min_interval=cfg.llm.min_interval,
+    max_log_lines=cfg.llm.max_log_lines,
+    regex_threshold=cfg.llm.regex_threshold,
+)
 
 async def main():
     await store.load()

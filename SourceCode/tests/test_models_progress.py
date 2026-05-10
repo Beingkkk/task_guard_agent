@@ -3,7 +3,6 @@
 Relates-to: FR-3
 """
 
-
 from taskguard.models.snapshot import ProgressInfo
 from taskguard.models.task import Task, TaskConfig
 

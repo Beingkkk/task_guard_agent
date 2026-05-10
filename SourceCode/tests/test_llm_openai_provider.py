@@ -3,6 +3,8 @@
 Relates-to: FR-3
 """
 
+import json
+from pathlib import Path
 from unittest import mock
 
 import httpx
@@ -12,12 +14,26 @@ from taskguard.llm.base import LLMError, Message, ToolDefinition, Usage
 from taskguard.llm.openai_provider import OpenAIProvider
 
 
+def _load_openai_config() -> dict[str, str]:
+    """Read config-openai.json for base_url and model (tests use mock key)."""
+    path = Path("config/config-openai.json")
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            cfg = json.load(f)
+        return {
+            "base_url": cfg.get("llm_base_url", "https://api.openai.com"),
+            "model": cfg.get("model_name") or "kimi-k2.6",
+        }
+    return {"base_url": "https://api.openai.com", "model": "kimi-k2.6"}
+
+
 @pytest.fixture
 def provider() -> OpenAIProvider:
+    cfg = _load_openai_config()
     return OpenAIProvider(
         api_key="test-key",
-        model="kimi-for-coding",
-        base_url="https://api.example.com",
+        model=cfg["model"],
+        base_url=cfg["base_url"],
     )
 
 
@@ -44,7 +60,7 @@ async def test_complete_payload_format(provider: OpenAIProvider) -> None:
         call_args = httpx.AsyncClient.post.call_args
         assert call_args is not None
         payload = call_args.kwargs["json"]
-        assert payload["model"] == "kimi-for-coding"
+        assert payload["model"] == provider._model
         assert payload["messages"][0]["role"] == "system"
         assert payload["messages"][0]["content"] == "sys"
         assert payload["messages"][1]["role"] == "user"

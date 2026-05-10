@@ -16,12 +16,32 @@ from taskguard.storage.task_store import TaskStore
 from taskguard.tools import register_builtin_tools
 from taskguard.tools.base import ToolRegistry, ToolResult
 
-app = typer.Typer(name="taskguard", help="进程守护与智能监控 Agent", no_args_is_help=True)
+app = typer.Typer(name="taskguard", help="进程守护与智能监控 Agent", no_args_is_help=False)
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """CLI entry point. Enter interactive shell when no subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        asyncio.run(_enter_shell())
 
 
 def _data_dir() -> Path:
     raw = os.environ.get("TASKGUARD_DATA_DIR", "./data")
     return Path(raw).resolve()
+
+
+async def _enter_shell() -> None:
+    """Enter interactive shell with full agent environment."""
+    from pathlib import Path
+
+    from taskguard.cli.shell import InteractiveShell
+
+    data = _data_dir()
+    data.mkdir(parents=True, exist_ok=True)
+
+    shell = await InteractiveShell.from_config(Path("config"), data)
+    await shell.run()
 
 
 def _format_list(tasks: list[dict[str, Any]]) -> str:

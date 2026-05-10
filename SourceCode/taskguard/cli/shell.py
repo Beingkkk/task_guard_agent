@@ -4,11 +4,15 @@ Relates-to: FR-4
 """
 
 import asyncio
+import json
 import logging
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import psutil
 
 from taskguard.agent import AgentHarness
 from taskguard.analyzers.pipeline import AnalyzerPipeline
@@ -99,10 +103,20 @@ class InteractiveShell:
 
         return cls(harness, store, metrics, provider)
 
-    def _print_banner(self) -> None:
+    async def _print_banner(self) -> None:
         llm_status = "ready" if self._provider else "unavailable"
         task_count = len(self._store.list_all())
         data_dir = self._store._state_file.parent
+
+        last_collected_str = "never"
+        try:
+            last_ts = await self._metrics_store.get_last_collect_time()
+            if last_ts:
+                ago = int((datetime.now(UTC) - last_ts).total_seconds())
+                last_collected_str = f"{ago}s ago"
+        except Exception:
+            pass
+
         banner = f"""\
 ============================================================
   TaskGuard Agent  v0.1
@@ -111,6 +125,7 @@ class InteractiveShell:
   Collect interval: {self._harness._interval}s
   LLM provider    : {llm_status}
   Tasks           : {task_count} registered
+  Last collected  : {last_collected_str}
 ------------------------------------------------------------
   Type /help for commands, or just chat with me.
   Type exit to quit.
@@ -120,7 +135,7 @@ class InteractiveShell:
 
     async def run(self) -> None:
         """Start harness and enter REPL loop."""
-        self._print_banner()
+        await self._print_banner()
 
         self._harness_task = asyncio.create_task(self._harness.run())
 
@@ -224,13 +239,79 @@ class InteractiveShell:
         if isinstance(result.data, list):
             if not result.data:
                 return "No items."
-            # Format list of dicts as simple table
+            # Enhance list output with real-time PID status for list_tasks
+            if tool_name == "list_tasks":
+                data = await self._enrich_list_with_pid_status(result.data)
+                return self._format_table(data)
             return self._format_table(result.data)
 
         if isinstance(result.data, dict):
+            if tool_name == "query_status":
+                return self._format_dict_markdown(result.data)
             return "\n".join(f"  {k}: {v}" for k, v in result.data.items())
 
         return str(result.data)
+
+    async def _enrich_list_with_pid_status(
+        self, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Add real-time pid_status column to task list."""
+        enriched = []
+        for row in rows:
+            r = dict(row)
+            pid = r.get("pid")
+            if pid is not None:
+                r["pid_status"] = "running" if psutil.pid_exists(int(pid)) else "exited"
+            else:
+                r["pid_status"] = "-"
+            enriched.append(r)
+        return enriched
+
+    def _format_dict_markdown(self, data: dict[str, Any]) -> str:
+        """Format a task dict as Markdown for readable display."""
+        lines: list[str] = []
+
+        alias = data.get("alias", "Unknown")
+        lines.append(f"## Task: {alias}")
+        lines.append("")
+
+        # Basic info table
+        lines.append("| 字段 | 值 |")
+        lines.append("|---|---|")
+        for key in ("alias", "pid", "created_at", "source"):
+            if key in data:
+                lines.append(f"| {key} | {data[key]} |")
+        lines.append("")
+
+        # Log source
+        log_source = data.get("log_source")
+        if log_source and isinstance(log_source, dict):
+            lines.append("### 日志源")
+            lines.append("```json")
+            lines.append(json.dumps(log_source, indent=2, ensure_ascii=False))
+            lines.append("```")
+            lines.append("")
+
+        # Config
+        config = data.get("config")
+        if config and isinstance(config, dict):
+            lines.append("### 配置")
+            lines.append("| 字段 | 值 |")
+            lines.append("|---|---|")
+            for k, v in config.items():
+                lines.append(f"| {k} | {v} |")
+            lines.append("")
+
+        # Runtime state
+        state = data.get("state")
+        if state and isinstance(state, dict) and state:
+            lines.append("### 运行时状态")
+            lines.append("```json")
+            lines.append(json.dumps(state, indent=2, ensure_ascii=False))
+            lines.append("```")
+            lines.append("")
+
+        return "\n".join(lines)
 
     def _format_table(self, rows: list[dict[str, Any]]) -> str:
         """Simple table formatter for list output."""
@@ -252,6 +333,7 @@ class InteractiveShell:
   /list                                      列出所有任务
   /status <别名>                             查询任务详情
   /progress <别名>                           查询最新进度
+  /cleanup                                   清理已退出的任务
   /help                                      显示此帮助
 
 你也可以用自然语言描述你的操作意图，例如：

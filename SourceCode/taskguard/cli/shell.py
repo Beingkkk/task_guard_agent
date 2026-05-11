@@ -16,7 +16,6 @@ import psutil
 from taskguard.agent import AgentHarness
 from taskguard.analyzers.pipeline import AnalyzerPipeline
 from taskguard.analyzers.regex_extractor import RegexExtractor
-from taskguard.collectors.bash_collector import BashCollector
 from taskguard.collectors.file_collector import FileCollector
 from taskguard.config_loader import ConfigLoader
 from taskguard.interaction.intent_parser import IntentParser, IntentParseResult
@@ -80,7 +79,6 @@ class InteractiveShell:
             metrics,
             collect_interval=app_config.collect_interval,
         )
-        harness.register_collector("bash", BashCollector())
         harness.register_collector("file", FileCollector())
 
         provider: BaseProvider | None = None

@@ -35,7 +35,7 @@ class TestAgentHarnessNormalPath:
     async def test_run_once_saves_snapshot_per_task(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
-        t1 = Task(alias="a", log_source=LogSource(type="bash", command="echo a"))
+        t1 = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         t2 = Task(alias="b", log_source=LogSource(type="file", path="/tmp/b.log"))
         mock_store.list_all.return_value = [t1, t2]
 
@@ -43,7 +43,6 @@ class TestAgentHarnessNormalPath:
         mock_collector = MagicMock()
         mock_collector.collect_logs = AsyncMock(return_value=["line"])
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
         harness.register_collector("file", mock_collector)
 
         await harness.run_once()
@@ -53,14 +52,14 @@ class TestAgentHarnessNormalPath:
     async def test_run_once_no_pid_skips_process_collection(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
-        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"), pid=None)
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=None)
         mock_store.list_all.return_value = [task]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
         mock_collector = MagicMock()
         mock_collector.collect_logs = AsyncMock(return_value=[])
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
+        harness.register_collector("file", mock_collector)
 
         with patch.object(
             harness._process_collector, "collect", AsyncMock(return_value=None)
@@ -73,14 +72,14 @@ class TestAgentHarnessNormalPath:
     async def test_run_once_with_pid_collects_process(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
-        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"), pid=12345)
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
         mock_store.list_all.return_value = [task]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
         mock_collector = MagicMock()
         mock_collector.collect_logs = AsyncMock(return_value=[])
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
+        harness.register_collector("file", mock_collector)
 
         with patch.object(
             harness._process_collector,
@@ -92,35 +91,6 @@ class TestAgentHarnessNormalPath:
 
         await harness._cleanup()
 
-    async def test_run_once_auto_populates_bash_pid(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock
-    ) -> None:
-        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"), pid=None)
-        mock_store.list_all.return_value = [task]
-
-        harness = AgentHarness(mock_store, mock_metrics_store)
-
-        async def mock_collect_logs(t: Task) -> list[str]:
-            # Simulate BashCollector writing pid to task.state
-            t.state.setdefault("bash", {})["pid"] = 12345
-            return []
-
-        mock_collector = MagicMock()
-        mock_collector.collect_logs = AsyncMock(side_effect=mock_collect_logs)
-        mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
-
-        with patch.object(
-            harness._process_collector,
-            "collect",
-            AsyncMock(return_value=ProcessInfo(cpu_percent=5.0, status="running")),
-        ) as mock_process:
-            await harness.run_once()
-            # pid should be auto-populated from task.state["bash"]["pid"]
-            assert task.pid == 12345
-            mock_process.assert_awaited_once_with(12345)
-
-        await harness._cleanup()
 
     async def test_run_once_leaves_file_pid_none(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
@@ -150,8 +120,8 @@ class TestExceptionIsolation:
     async def test_collection_error_isolated(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
-        t1 = Task(alias="bad", log_source=LogSource(type="bash", command=""))
-        t2 = Task(alias="good", log_source=LogSource(type="bash", command="echo ok"))
+        t1 = Task(alias="bad", log_source=LogSource(type="file", path="C:\\test.log"))
+        t2 = Task(alias="good", log_source=LogSource(type="file", path="C:\\test.log"))
         mock_store.list_all.return_value = [t1, t2]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
@@ -161,7 +131,7 @@ class TestExceptionIsolation:
         good_collector = MagicMock()
         good_collector.collect_logs = AsyncMock(return_value=["ok"])
         good_collector.close = AsyncMock()
-        harness.register_collector("bash", bad_collector)
+        harness.register_collector("file", bad_collector)
 
         # Replace collector for second task by re-registering after first call
         # Simpler: use a single collector that raises on first call
@@ -177,7 +147,7 @@ class TestExceptionIsolation:
         mixed_collector = MagicMock()
         mixed_collector.collect_logs = AsyncMock(side_effect=side_effect)
         mixed_collector.close = AsyncMock()
-        harness.register_collector("bash", mixed_collector)
+        harness.register_collector("file", mixed_collector)
 
         await harness.run_once()
         # Second task should still be saved
@@ -190,14 +160,14 @@ class TestExceptionIsolation:
     async def test_nosuchprocess_sets_exited(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
-        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"), pid=99999)
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=99999)
         mock_store.list_all.return_value = [task]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
         mock_collector = MagicMock()
         mock_collector.collect_logs = AsyncMock(return_value=[])
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
+        harness.register_collector("file", mock_collector)
 
         with patch.object(
             harness._process_collector,
@@ -214,8 +184,8 @@ class TestExceptionIsolation:
     async def test_unexpected_exception_logged(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
-        t1 = Task(alias="bad", log_source=LogSource(type="bash", command=""))
-        t2 = Task(alias="good", log_source=LogSource(type="bash", command="echo ok"))
+        t1 = Task(alias="bad", log_source=LogSource(type="file", path="C:\\test.log"))
+        t2 = Task(alias="good", log_source=LogSource(type="file", path="C:\\test.log"))
         mock_store.list_all.return_value = [t1, t2]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
@@ -228,7 +198,7 @@ class TestExceptionIsolation:
         mock_collector = MagicMock()
         mock_collector.collect_logs = AsyncMock(side_effect=side_effect)
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
+        harness.register_collector("file", mock_collector)
 
         await harness.run_once()
         # Second task should still be processed despite RuntimeError on first
@@ -245,14 +215,14 @@ class TestAnalyzerInjection:
         from taskguard.models.snapshot import ProgressInfo
 
         mock_metrics_store.save_progress = AsyncMock()
-        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"))
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         mock_store.list_all.return_value = [task]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
         mock_collector = MagicMock()
         mock_collector.collect_logs = AsyncMock(return_value=["line"])
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
+        harness.register_collector("file", mock_collector)
 
         mock_analyzer = MagicMock()
         mock_analyzer.analyze = AsyncMock(
@@ -270,14 +240,14 @@ class TestAnalyzerInjection:
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
         mock_metrics_store.save_progress = AsyncMock()
-        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"))
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         mock_store.list_all.return_value = [task]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
         mock_collector = MagicMock()
         mock_collector.collect_logs = AsyncMock(return_value=[])
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
+        harness.register_collector("file", mock_collector)
 
         mock_analyzer = MagicMock()
         mock_analyzer.analyze = AsyncMock(return_value=None)
@@ -292,8 +262,8 @@ class TestAnalyzerInjection:
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
         mock_metrics_store.save_progress = AsyncMock()
-        t1 = Task(alias="bad", log_source=LogSource(type="bash", command=""))
-        t2 = Task(alias="good", log_source=LogSource(type="bash", command="echo ok"))
+        t1 = Task(alias="bad", log_source=LogSource(type="file", path="C:\\test.log"))
+        t2 = Task(alias="good", log_source=LogSource(type="file", path="C:\\test.log"))
         mock_store.list_all.return_value = [t1, t2]
 
         harness = AgentHarness(mock_store, mock_metrics_store)
@@ -306,7 +276,7 @@ class TestAnalyzerInjection:
 
         mock_collector.collect_logs = AsyncMock(side_effect=side_effect)
         mock_collector.close = AsyncMock()
-        harness.register_collector("bash", mock_collector)
+        harness.register_collector("file", mock_collector)
 
         mock_analyzer = MagicMock()
 

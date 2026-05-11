@@ -52,7 +52,6 @@ class Task:
         if self.log_source is not None:
             log_source_data = {
                 "type": self.log_source.type,
-                "command": self.log_source.command,
                 "path": self.log_source.path,
                 "extensions": list(self.log_source.extensions),
             }
@@ -82,8 +81,7 @@ class Task:
         log_source: LogSource | None = None
         if log_data is not None:
             log_source = LogSource(
-                type=log_data["type"],
-                command=log_data.get("command"),
+                type=log_data.get("type", "file"),
                 path=log_data.get("path"),
                 extensions=tuple(log_data.get("extensions", [".log", ".txt", ".out"])),
             )

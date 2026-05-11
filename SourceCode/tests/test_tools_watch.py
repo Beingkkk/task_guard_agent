@@ -35,24 +35,11 @@ class TestWatchTaskTool:
         assert result.data.pid == 12345
 
     @pytest.mark.asyncio
-    async def test_bash_mode(self, tmp_path) -> None:
-        store = TaskStore(tmp_path)
-        tool = WatchTaskTool(store)
-        result = await tool.execute(
-            {
-                "alias": "下载C",
-                "log": "bash://wget -c http://example.com/large.zip",
-            }
-        )
-        assert result.ok is True
-        assert result.data.log_source.type == "bash"
-
-    @pytest.mark.asyncio
     async def test_duplicate_alias(self, tmp_path) -> None:
         store = TaskStore(tmp_path)
         tool = WatchTaskTool(store)
-        await tool.execute({"alias": "a", "log": "bash://ls"})
-        result = await tool.execute({"alias": "a", "log": "bash://ls"})
+        await tool.execute({"alias": "a", "log": "file://C:\\test.log"})
+        result = await tool.execute({"alias": "a", "log": "file://C:\\test.log"})
         assert result.ok is False
         assert result.error_code == "alias_exists"
 
@@ -68,7 +55,7 @@ class TestWatchTaskTool:
     async def test_invalid_pid(self, tmp_path) -> None:
         store = TaskStore(tmp_path)
         tool = WatchTaskTool(store)
-        result = await tool.execute({"alias": "a", "log": "bash://ls", "pid": "abc"})
+        result = await tool.execute({"alias": "a", "log": "file://C:\\test.log", "pid": "abc"})
         assert result.ok is False
         assert result.error_code == "invalid_pid"
 
@@ -77,7 +64,7 @@ class TestWatchTaskTool:
         store = TaskStore(tmp_path)
         watch = WatchTaskTool(store)
         unwatch = UnwatchTaskTool(store)
-        await watch.execute({"alias": "a", "log": "bash://ls"})
+        await watch.execute({"alias": "a", "log": "file://C:\\test.log"})
         result = await unwatch.execute({"alias": "a"})
         assert result.ok is True
 
@@ -94,7 +81,7 @@ class TestWatchTaskTool:
         store = TaskStore(tmp_path)
         from taskguard.models.task import Task
 
-        t = Task(alias="a", log_source=LogSource(type="bash", command="ls"), source="yaml")
+        t = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), source="yaml")
         await store.add(t)
         tool = UnwatchTaskTool(store)
         result = await tool.execute({"alias": "a"})

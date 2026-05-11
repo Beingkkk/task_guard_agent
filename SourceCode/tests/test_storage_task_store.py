@@ -24,7 +24,7 @@ class TestTaskStoreLoadSave:
     @pytest.mark.asyncio
     async def test_save_and_load(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path)
-        t1 = Task(alias="a", log_source=LogSource(type="bash", command="ls"))
+        t1 = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         t2 = Task(alias="b", log_source=LogSource(type="file", path="C:\\x.log"))
         await store.save_all([t1, t2])
 
@@ -36,7 +36,7 @@ class TestTaskStoreLoadSave:
     @pytest.mark.asyncio
     async def test_atomic_write(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path)
-        t = Task(alias="a", log_source=LogSource(type="bash", command="ls"))
+        t = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         await store.save_all([t])
         assert (tmp_path / "tasks_state.json").exists()
 
@@ -64,14 +64,14 @@ class TestTaskStoreAddRemove:
     @pytest.mark.asyncio
     async def test_add(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path)
-        t = Task(alias="a", log_source=LogSource(type="bash", command="ls"))
+        t = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         await store.add(t)
         assert (await store.get("a")).alias == "a"
 
     @pytest.mark.asyncio
     async def test_add_duplicate(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path)
-        t = Task(alias="a", log_source=LogSource(type="bash", command="ls"))
+        t = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         await store.add(t)
         with pytest.raises(TaskRegistrationError):
             await store.add(t)
@@ -79,7 +79,7 @@ class TestTaskStoreAddRemove:
     @pytest.mark.asyncio
     async def test_remove(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path)
-        t = Task(alias="a", log_source=LogSource(type="bash", command="ls"))
+        t = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
         await store.add(t)
         await store.remove("a")
         with pytest.raises(TaskNotFoundError):
@@ -98,7 +98,7 @@ class TestYamlMerge:
         """JSON has 下载A(cli); YAML has 下载A(yaml) -> keep yaml."""
         store = TaskStore(tmp_path)
         cli_task = Task(
-            alias="下载A", log_source=LogSource(type="bash", command="ls"), source="cli"
+            alias="下载A", log_source=LogSource(type="file", path="C:\\test.log"), source="cli"
         )
         await store.save_all([cli_task])
 
@@ -137,7 +137,7 @@ class TestYamlMerge:
     @pytest.mark.asyncio
     async def test_json_retained_when_no_yaml_conflict(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path)
-        t = Task(alias="服务B", log_source=LogSource(type="bash", command="ls"), source="cli")
+        t = Task(alias="服务B", log_source=LogSource(type="file", path="C:\\test.log"), source="cli")
         await store.save_all([t])
 
         yaml_path = tmp_path / "tasks.yaml"

@@ -77,7 +77,7 @@ async def test_regex_high_confidence_skips_llm(
         llm_min_interval=0,
         regex_threshold=0.6,
     )
-    task = Task(alias="t", log_source=LogSource(type="bash", command="x"))
+    task = Task(alias="t", log_source=LogSource(type="file", path="C:\\test.log"))
     snapshot = Snapshot(task_alias="t", log_lines=["Progress 68%"])
 
     result = await pipeline.analyze(task, snapshot)
@@ -98,7 +98,7 @@ async def test_regex_low_confidence_with_cooldown_passed_calls_llm(
         llm_min_interval=0,
         regex_threshold=0.6,
     )
-    task = Task(alias="t", log_source=LogSource(type="bash", command="x"))
+    task = Task(alias="t", log_source=LogSource(type="file", path="C:\\test.log"))
     snapshot = Snapshot(task_alias="t", log_lines=["Progress 68%"])
 
     result = await pipeline.analyze(task, snapshot)
@@ -120,7 +120,7 @@ async def test_regex_low_confidence_cooldown_active_returns_regex(
         llm_min_interval=3600,
         regex_threshold=0.6,
     )
-    task = Task(alias="t", log_source=LogSource(type="bash", command="x"))
+    task = Task(alias="t", log_source=LogSource(type="file", path="C:\\test.log"))
     # Simulate a recent LLM call
     task.state["last_llm_call"] = 9999999999.0  # far future, cooldown active
     snapshot = Snapshot(task_alias="t", log_lines=["Progress 68%"])
@@ -143,7 +143,7 @@ async def test_no_match_with_cooldown_passed_calls_llm(
         regex_extractor=no_match_extractor,
         llm_min_interval=0,
     )
-    task = Task(alias="t", log_source=LogSource(type="bash", command="x"))
+    task = Task(alias="t", log_source=LogSource(type="file", path="C:\\test.log"))
     snapshot = Snapshot(task_alias="t", log_lines=["Some random text"])
 
     result = await pipeline.analyze(task, snapshot)
@@ -162,7 +162,7 @@ async def test_empty_log_lines_returns_none(
         provider=fake_provider,
         regex_extractor=no_match_extractor,
     )
-    task = Task(alias="t", log_source=LogSource(type="bash", command="x"))
+    task = Task(alias="t", log_source=LogSource(type="file", path="C:\\test.log"))
     snapshot = Snapshot(task_alias="t", log_lines=[])
 
     result = await pipeline.analyze(task, snapshot)
@@ -185,7 +185,7 @@ async def test_provider_error_returns_none(
         regex_extractor=no_match_extractor,
         llm_min_interval=0,
     )
-    task = Task(alias="t", log_source=LogSource(type="bash", command="x"))
+    task = Task(alias="t", log_source=LogSource(type="file", path="C:\\test.log"))
     snapshot = Snapshot(task_alias="t", log_lines=["text"])
 
     result = await pipeline.analyze(task, snapshot)
@@ -204,7 +204,7 @@ async def test_max_log_lines_trims_to_last_50(
         llm_min_interval=0,
         max_log_lines=50,
     )
-    task = Task(alias="t", log_source=LogSource(type="bash", command="x"))
+    task = Task(alias="t", log_source=LogSource(type="file", path="C:\\test.log"))
     log_lines = [f"Line {i}" for i in range(100)]
     snapshot = Snapshot(task_alias="t", log_lines=log_lines)
 

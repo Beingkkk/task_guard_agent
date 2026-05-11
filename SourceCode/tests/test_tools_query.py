@@ -22,7 +22,7 @@ class TestListTasksTool:
     @pytest.mark.asyncio
     async def test_returns_summaries(self, tmp_path) -> None:
         store = TaskStore(tmp_path)
-        await store.add(Task(alias="a", log_source=LogSource(type="bash", command="ls")))
+        await store.add(Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log")))
         await store.add(
             Task(alias="b", log_source=LogSource(type="file", path="C:\\x.log"), pid=123)
         )
@@ -38,7 +38,7 @@ class TestQueryStatusTool:
     @pytest.mark.asyncio
     async def test_happy(self, tmp_path) -> None:
         store = TaskStore(tmp_path)
-        await store.add(Task(alias="a", log_source=LogSource(type="bash", command="ls")))
+        await store.add(Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log")))
         tool = QueryStatusTool(store)
         result = await tool.execute({"alias": "a"})
         assert result.ok is True

@@ -84,12 +84,6 @@ class AgentHarness:
                 return
             log_lines = await collector.collect_logs(task)
 
-        # Auto-populate pid from bash collector if not set
-        if task.pid is None and task.log_source is not None and task.log_source.type == "bash":
-            bash_pid = task.state.get("bash", {}).get("pid")
-            if bash_pid is not None:
-                task.pid = bash_pid
-
         process_info = await self._process_collector.collect(task.pid)
 
         snapshot = Snapshot(

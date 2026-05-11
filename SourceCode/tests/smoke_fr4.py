@@ -36,10 +36,10 @@ async def test_command_parser() -> None:
     parser = CommandParser()
 
     # 1. /watch 解析
-    cmd = parser.parse("/watch 下载A --log bash://wget -c http://a.com/f.zip --pid 12345")
+    cmd = parser.parse("/watch 下载A --log file://C:\\test.log -c http://a.com/f.zip --pid 12345")
     assert cmd.tool_name == "watch_task"
     assert cmd.params["alias"] == "下载A"
-    assert cmd.params["log"] == "bash://wget -c http://a.com/f.zip"
+    assert cmd.params["log"] == "file://C:\\test.log -c http://a.com/f.zip"
     assert cmd.params["pid"] == "12345"
     print("[OK] CommandParser /watch")
 

@@ -14,10 +14,10 @@ class TestCommandParser:
         return CommandParser()
 
     def test_watch_full(self, parser: CommandParser) -> None:
-        cmd = parser.parse("/watch 下载A --log bash://wget -c http://a.com/f.zip --pid 12345")
+        cmd = parser.parse("/watch 下载A --log file://C:\\test.log -c http://a.com/f.zip --pid 12345")
         assert cmd.tool_name == "watch_task"
         assert cmd.params["alias"] == "下载A"
-        assert cmd.params["log"] == "bash://wget -c http://a.com/f.zip"
+        assert cmd.params["log"] == "file://C:\\test.log -c http://a.com/f.zip"
         assert cmd.params["pid"] == "12345"
 
     def test_unwatch(self, parser: CommandParser) -> None:
@@ -50,11 +50,11 @@ class TestCommandParser:
             parser.parse("/unknown")
 
     def test_leading_and_trailing_spaces(self, parser: CommandParser) -> None:
-        cmd = parser.parse("  /watch  下载A  --log  bash://echo hello  ")
+        cmd = parser.parse("  /watch  下载A  --log  file://C:\\test.log hello  ")
         assert cmd.tool_name == "watch_task"
         assert cmd.params["alias"] == "下载A"
-        assert cmd.params["log"] == "bash://echo hello"
+        assert cmd.params["log"] == "file://C:\\test.log hello"
 
     def test_flag_without_value(self, parser: CommandParser) -> None:
-        cmd = parser.parse("/watch 下载A --log bash://echo --dry-run")
+        cmd = parser.parse("/watch 下载A --log file://C:\\test.log --dry-run")
         assert cmd.params["dry-run"] == "True"

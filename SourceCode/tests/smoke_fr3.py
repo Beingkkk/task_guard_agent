@@ -52,7 +52,7 @@ async def main():
     # 4. Test regex success (wget progress)
     task = Task(
         alias="smoke-wget",
-        log_source=LogSource(type="bash", command="wget http://example.com/file.zip"),
+        log_source=LogSource(type="file", path="C:\\test.log"),
         config=TaskConfig(tool_hint="wget"),
     )
     log_lines = [
@@ -75,7 +75,7 @@ async def main():
     # 5. Test LLM fallback (unknown tool logs)
     task2 = Task(
         alias="smoke-unknown",
-        log_source=LogSource(type="bash", command="./custom_tool"),
+        log_source=LogSource(type="file", path="C:\\test.log"),
     )
     log_lines2 = ["Processing item 42 of 100...", "Item 42 done", "Processing item 43..."]
     snapshot2 = Snapshot(task_alias=task2.alias, log_lines=log_lines2)
@@ -88,7 +88,7 @@ async def main():
     # 6. Test cooldown
     task3 = Task(
         alias="smoke-cooldown",
-        log_source=LogSource(type="bash", command="./custom_tool"),
+        log_source=LogSource(type="file", path="C:\\test.log"),
     )
     pipeline_cool = AnalyzerPipeline(
         provider=provider,

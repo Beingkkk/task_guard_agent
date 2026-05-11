@@ -5,6 +5,7 @@ Relates-to: FR-1, FR-4
 
 from taskguard.tools.base import BaseTool, ToolRegistry, ToolResult
 from taskguard.tools.cleanup import CleanupExitedTool
+from taskguard.tools.collect_all import CollectAllTool
 from taskguard.tools.exec_bash import ExecBashTool
 from taskguard.tools.help import HelpTool
 from taskguard.tools.query import ListTasksTool, QueryProgressTool, QueryStatusTool
@@ -19,6 +20,7 @@ __all__ = [
     "ListTasksTool",
     "QueryStatusTool",
     "QueryProgressTool",
+    "CollectAllTool",
     "CleanupExitedTool",
     "ExecBashTool",
     "HelpTool",

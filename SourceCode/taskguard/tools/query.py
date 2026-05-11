@@ -29,7 +29,7 @@ class ListTasksTool(BaseTool):
             {
                 "alias": t.alias,
                 "pid": t.pid,
-                "log_type": t.log_source.type,
+                "log_type": t.log_source.type if t.log_source else "none",
                 "created_at": t.created_at.isoformat().replace("+00:00", "Z"),
                 "source": t.source,
             }

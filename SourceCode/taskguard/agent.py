@@ -76,12 +76,20 @@ class AgentHarness:
 
     async def _collect_task(self, task: Any) -> None:
         """Collect logs and metrics for a single task."""
-        collector = self._get_collector(task.log_source.type)
-        if collector is None:
-            logger.warning("No collector registered for type %s", task.log_source.type)
-            return
+        log_lines: list[str] = []
+        if task.log_source is not None:
+            collector = self._get_collector(task.log_source.type)
+            if collector is None:
+                logger.warning("No collector registered for type %s", task.log_source.type)
+                return
+            log_lines = await collector.collect_logs(task)
 
-        log_lines = await collector.collect_logs(task)
+        # Auto-populate pid from bash collector if not set
+        if task.pid is None and task.log_source is not None and task.log_source.type == "bash":
+            bash_pid = task.state.get("bash", {}).get("pid")
+            if bash_pid is not None:
+                task.pid = bash_pid
+
         process_info = await self._process_collector.collect(task.pid)
 
         snapshot = Snapshot(

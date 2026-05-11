@@ -11,6 +11,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -96,6 +97,32 @@ class TaskStore:
         if alias not in self._tasks:
             raise TaskNotFoundError(f"Alias '{alias}' not found")
         return self._tasks[alias]
+
+    async def update(
+        self,
+        alias: str,
+        log_source: Any = None,
+        pid: int | None = None,
+    ) -> Task:
+        """Update specific fields of an existing task.
+
+        Only updates fields that are explicitly provided (not None).
+        """
+        if alias not in self._tasks:
+            raise TaskNotFoundError(f"Alias '{alias}' not found")
+
+        task = self._tasks[alias]
+
+        if log_source is not None:
+            task.log_source = log_source
+        if pid is not None:
+            task.pid = pid
+
+        if task.pid is None and task.log_source is None:
+            raise ValueError("Task must have at least one of pid or log_source")
+
+        await self.save_all(list(self._tasks.values()))
+        return task
 
     def list_all(self) -> list[Task]:
         """Return all registered tasks."""

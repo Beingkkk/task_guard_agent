@@ -33,7 +33,9 @@ class BashCollector(BaseCollector):
     async def _ensure_started(self, task: Task) -> None:
         if self._started:
             return
+        assert task.log_source is not None
         command = task.log_source.command or ""
+
         if not command.strip():
             raise CollectionError("Empty bash command")
         self._proc = await asyncio.create_subprocess_shell(
@@ -41,6 +43,7 @@ class BashCollector(BaseCollector):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )
+        task.state.setdefault("bash", {})["pid"] = self._proc.pid
         self._reader_task = asyncio.create_task(self._reader_loop(task))
         self._started = True
 

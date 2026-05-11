@@ -31,7 +31,7 @@ class Task:
     """A monitored task definition."""
 
     alias: str
-    log_source: LogSource
+    log_source: LogSource | None = None
     pid: int | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     state: dict[str, Any] = field(default_factory=dict)
@@ -43,18 +43,23 @@ class Task:
             raise ValueError(f"Invalid alias: {self.alias!r}")
         if self.pid is not None and self.pid <= 0:
             raise ValueError(f"PID must be a positive integer, got {self.pid}")
+        if self.pid is None and self.log_source is None:
+            raise ValueError("Task must have at least one of pid or log_source")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict."""
-        return {
-            "alias": self.alias,
-            "pid": self.pid,
-            "log_source": {
+        log_source_data = None
+        if self.log_source is not None:
+            log_source_data = {
                 "type": self.log_source.type,
                 "command": self.log_source.command,
                 "path": self.log_source.path,
                 "extensions": list(self.log_source.extensions),
-            },
+            }
+        return {
+            "alias": self.alias,
+            "pid": self.pid,
+            "log_source": log_source_data,
             "created_at": (self.created_at or datetime.now(UTC)).isoformat().replace("+00:00", "Z"),
             "state": self.state,
             "config": {
@@ -73,13 +78,15 @@ class Task:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Task":
         """Restore from a dict produced by to_dict()."""
-        log_data = data["log_source"]
-        log_source = LogSource(
-            type=log_data["type"],
-            command=log_data.get("command"),
-            path=log_data.get("path"),
-            extensions=tuple(log_data.get("extensions", [".log", ".txt", ".out"])),
-        )
+        log_data = data.get("log_source")
+        log_source: LogSource | None = None
+        if log_data is not None:
+            log_source = LogSource(
+                type=log_data["type"],
+                command=log_data.get("command"),
+                path=log_data.get("path"),
+                extensions=tuple(log_data.get("extensions", [".log", ".txt", ".out"])),
+            )
 
         config_data = data.get("config", {})
         config = TaskConfig(

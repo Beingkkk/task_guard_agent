@@ -4,11 +4,10 @@ Relates-to: FR-4
 """
 
 import asyncio
-import json
 import logging
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +27,11 @@ from taskguard.storage.metrics_store import MetricsStore
 from taskguard.storage.task_store import TaskStore
 from taskguard.tools import register_builtin_tools
 from taskguard.tools.base import ToolRegistry, ToolResult
+from taskguard.tools.collect_all import CollectAllTool
 
 logger = logging.getLogger(__name__)
+
+_CST = timezone(timedelta(hours=8))  # China Standard Time, UTC+8
 
 
 @dataclass
@@ -100,6 +102,7 @@ class InteractiveShell:
             )
 
         register_builtin_tools(store, metrics)
+        ToolRegistry.register(CollectAllTool(harness, metrics))
 
         return cls(harness, store, metrics, provider)
 
@@ -112,8 +115,7 @@ class InteractiveShell:
         try:
             last_ts = await self._metrics_store.get_last_collect_time()
             if last_ts:
-                ago = int((datetime.now(UTC) - last_ts).total_seconds())
-                last_collected_str = f"{ago}s ago"
+                last_collected_str = self._to_cst(last_ts)
         except Exception:
             pass
 
@@ -233,6 +235,17 @@ class InteractiveShell:
         if result.data is None:
             return "Done."
 
+        # Tool-specific markdown formatting
+        if tool_name == "watch_task" and hasattr(result.data, "to_dict"):
+            return self._format_dict_markdown(result.data.to_dict())
+
+        if tool_name == "query_progress" and isinstance(result.data, dict):
+            return self._format_progress_markdown(result.data)
+
+        if tool_name == "collect_all" and isinstance(result.data, dict):
+            last = result.data.get("last_collected", "unknown")
+            return f"Last collected: {self._to_cst(last)}"
+
         if isinstance(result.data, str):
             return result.data
 
@@ -242,6 +255,9 @@ class InteractiveShell:
             # Enhance list output with real-time PID status for list_tasks
             if tool_name == "list_tasks":
                 data = await self._enrich_list_with_pid_status(result.data)
+                for row in data:
+                    if "created_at" in row:
+                        row["created_at"] = self._to_cst(row["created_at"])
                 return self._format_table(data)
             return self._format_table(result.data)
 
@@ -252,6 +268,33 @@ class InteractiveShell:
 
         return str(result.data)
 
+    @staticmethod
+    def _to_cst(value: Any) -> str:
+        """Convert UTC datetime/ISO string to CST (UTC+8) display string."""
+        if value is None or value == "" or value == "-":
+            return "-"
+
+        dt: datetime | None = None
+
+        if isinstance(value, datetime):
+            dt = value
+        elif isinstance(value, str):
+            try:
+                s = value
+                if s.endswith("Z"):
+                    s = s[:-1] + "+00:00"
+                dt = datetime.fromisoformat(s)
+            except ValueError:
+                return value
+
+        if dt is None:
+            return str(value)
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+
+        return dt.astimezone(_CST).strftime("%Y-%m-%d %H:%M:%S")
+
     async def _enrich_list_with_pid_status(
         self, rows: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -261,57 +304,98 @@ class InteractiveShell:
             r = dict(row)
             pid = r.get("pid")
             if pid is not None:
-                r["pid_status"] = "running" if psutil.pid_exists(int(pid)) else "exited"
+                try:
+                    pid_int = int(pid)
+                    r["pid_status"] = "running" if psutil.pid_exists(pid_int) else "exited"
+                except (ValueError, TypeError, OverflowError):
+                    r["pid_status"] = f"invalid({pid!r})"
             else:
                 r["pid_status"] = "-"
             enriched.append(r)
         return enriched
 
+    @staticmethod
+    def _format_kv_block(title: str, items: list[tuple[str, Any]]) -> str:
+        """Format key-value pairs with aligned keys."""
+        lines = [title]
+        if not items:
+            lines.append("  (none)")
+            return "\n".join(lines)
+        max_key = max(len(str(k)) for k, _ in items)
+        for k, v in items:
+            lines.append(f"  {k:<{max_key}} : {v}")
+        return "\n".join(lines)
+
     def _format_dict_markdown(self, data: dict[str, Any]) -> str:
-        """Format a task dict as Markdown for readable display."""
+        """Format a task dict as aligned key-value blocks."""
         lines: list[str] = []
 
         alias = data.get("alias", "Unknown")
-        lines.append(f"## Task: {alias}")
+        lines.append(f"Task: {alias}")
         lines.append("")
 
-        # Basic info table
-        lines.append("| 字段 | 值 |")
-        lines.append("|---|---|")
+        # Basic info
+        basic: list[tuple[str, Any]] = []
         for key in ("alias", "pid", "created_at", "source"):
             if key in data:
-                lines.append(f"| {key} | {data[key]} |")
-        lines.append("")
+                value = data[key]
+                if key == "created_at":
+                    value = self._to_cst(value)
+                basic.append((key, value))
+        if basic:
+            lines.append(self._format_kv_block("Basic", basic))
+            lines.append("")
 
         # Log source
         log_source = data.get("log_source")
         if log_source and isinstance(log_source, dict):
-            lines.append("### 日志源")
-            lines.append("```json")
-            lines.append(json.dumps(log_source, indent=2, ensure_ascii=False))
-            lines.append("```")
-            lines.append("")
+            ls_items = [(k, v) for k, v in log_source.items() if v is not None]
+            if ls_items:
+                lines.append(self._format_kv_block("Log Source", ls_items))
+                lines.append("")
 
         # Config
         config = data.get("config")
         if config and isinstance(config, dict):
-            lines.append("### 配置")
-            lines.append("| 字段 | 值 |")
-            lines.append("|---|---|")
-            for k, v in config.items():
-                lines.append(f"| {k} | {v} |")
-            lines.append("")
+            cfg_items = [(k, v) for k, v in config.items() if v is not None]
+            if cfg_items:
+                lines.append(self._format_kv_block("Config", cfg_items))
+                lines.append("")
 
         # Runtime state
         state = data.get("state")
         if state and isinstance(state, dict) and state:
-            lines.append("### 运行时状态")
-            lines.append("```json")
-            lines.append(json.dumps(state, indent=2, ensure_ascii=False))
-            lines.append("```")
+            state_items = [(k, v) for k, v in state.items()]
+            lines.append(self._format_kv_block("Runtime State", state_items))
             lines.append("")
 
         return "\n".join(lines)
+
+    def _format_progress_markdown(self, data: dict[str, Any]) -> str:
+        """Format progress data as aligned key-value block."""
+        field_labels = {
+            "alias": "alias",
+            "timestamp": "timestamp",
+            "percentage": "percentage",
+            "speed": "speed",
+            "eta": "eta",
+            "status": "status",
+            "raw_summary": "summary",
+            "confidence": "confidence",
+            "extracted_by": "extracted_by",
+        }
+
+        items = []
+        for key, label in field_labels.items():
+            if key in data:
+                value = data[key]
+                if value is None or value == "":
+                    value = "-"
+                elif key == "timestamp":
+                    value = self._to_cst(value)
+                items.append((label, value))
+
+        return self._format_kv_block("Progress", items)
 
     def _format_table(self, rows: list[dict[str, Any]]) -> str:
         """Simple table formatter for list output."""
@@ -329,10 +413,13 @@ class InteractiveShell:
 可用命令：
 
   /watch <别名> --log <URI> [--pid <PID>]    注册监控任务
+  /watch <别名> --revise --log <URI>         修改已有任务
+  /watch <别名> --revise --pid <PID>         修改已有任务
   /unwatch <别名>                            注销监控任务
   /list                                      列出所有任务
   /status <别名>                             查询任务详情
   /progress <别名>                           查询最新进度
+  /update                                    手动刷新全量收集
   /cleanup                                   清理已退出的任务
   /help                                      显示此帮助
 

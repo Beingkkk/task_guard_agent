@@ -23,6 +23,7 @@ class FileCollector(BaseCollector):
 
     def _resolve_path(self, task: Task) -> Path:
         """Return the concrete file path to read."""
+        assert task.log_source is not None
         source_path = Path(task.log_source.path) if task.log_source.path else None
         if source_path is None:
             raise CollectionError("Missing file path")

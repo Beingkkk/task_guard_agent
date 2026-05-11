@@ -9,7 +9,8 @@ INTENT_SYSTEM_PROMPT = """\
 你的任务是将用户输入解析为以下命令之一：
 
 - watch_task: 注册监控任务
-  参数: alias(任务别名,必填), log(日志源URI,必填), pid(进程ID,可选), tool_hint(工具类型,可选)
+  参数: alias(任务别名,必填), log(日志源URI,选填), pid(进程ID,选填), tool_hint(工具类型,可选), revise(是否修改已有任务,可选)
+  约束: pid 和 log 至少提供一个；revise=true 时修改已有任务而非新建
   示例输入: "帮我监控下载A，用wget下载example.com/file.zip"
 
 - unwatch_task: 注销监控任务
@@ -31,6 +32,10 @@ INTENT_SYSTEM_PROMPT = """\
 - cleanup_exited: 清理已退出的任务
   参数: 无
   示例输入: "清理已经不存在的任务"
+
+- collect_all: 手动刷新，执行一次全量状态收集
+  参数: 无
+  示例输入: "更新一下所有任务的状态"
 
 - exec_bash: 执行受限的 bash 命令（仅允许 ps, netstat, tasklist, ping 等白名单命令）
   参数: command(要执行的命令字符串,必填)

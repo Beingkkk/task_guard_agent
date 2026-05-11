@@ -32,6 +32,7 @@ class CommandParser:
         "status": "query_status",
         "progress": "query_progress",
         "cleanup": "cleanup_exited",
+        "update": "collect_all",
         "help": "help",
     }
 

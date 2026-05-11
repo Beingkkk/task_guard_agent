@@ -11,10 +11,12 @@ _HELP_TEXT = """\
 可用命令：
 
   /watch <别名> --log <URI> [--pid <PID>]    注册监控任务
+  /watch <别名> --revise [--log <URI>]        修改已有任务
   /unwatch <别名>                            注销监控任务
   /list                                      列出所有任务
   /status <别名>                             查询任务详情
   /progress <别名>                           查询最新进度
+  /update                                    手动刷新全量收集
   /help                                      显示此帮助
 
 你也可以用自然语言描述你的操作意图，例如：

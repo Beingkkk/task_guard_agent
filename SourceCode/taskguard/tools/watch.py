@@ -28,14 +28,17 @@ class WatchTaskTool(BaseTool):
         alias = params.get("alias", "").strip()
         log_uri = params.get("log", "").strip()
         pid_raw = params.get("pid")
+        revise = params.get("revise", "false").lower() in ("true", "yes", "1")
 
         if not alias:
             return ToolResult(ok=False, error_code="invalid_alias", message="Alias is required")
 
-        try:
-            log_source = LogSourceParser.from_uri(log_uri)
-        except ValueError as exc:
-            return ToolResult(ok=False, error_code="invalid_uri", message=str(exc))
+        log_source: LogSourceParser | None = None
+        if log_uri:
+            try:
+                log_source = LogSourceParser.from_uri(log_uri)
+            except ValueError as exc:
+                return ToolResult(ok=False, error_code="invalid_uri", message=str(exc))
 
         pid: int | None = None
         if pid_raw is not None:
@@ -49,6 +52,16 @@ class WatchTaskTool(BaseTool):
                 return ToolResult(
                     ok=False, error_code="invalid_pid", message=f"PID must be an integer: {pid_raw}"
                 )
+
+        if revise:
+            return await self._do_revise(alias, log_source, pid)
+
+        if pid is None and log_source is None:
+            return ToolResult(
+                ok=False,
+                error_code="missing_source",
+                message="At least one of --pid or --log is required",
+            )
 
         tool_hint = params.get("tool_hint")
         if tool_hint:
@@ -68,6 +81,45 @@ class WatchTaskTool(BaseTool):
             return ToolResult(ok=False, error_code="alias_exists", message=str(exc))
 
         return ToolResult(ok=True, data=task)
+
+    async def _do_revise(
+        self,
+        alias: str,
+        log_source: LogSourceParser | None,
+        pid: int | None,
+    ) -> ToolResult:
+        """Update an existing task. Only modifies fields explicitly provided."""
+        if self._store is None:
+            raise RuntimeError("No TaskStore available for watch_task")
+
+        try:
+            await self._store.get(alias)
+        except TaskNotFoundError:
+            return ToolResult(
+                ok=False,
+                error_code="alias_not_found",
+                message=f"Alias '{alias}' not found",
+            )
+
+        update_kwargs: dict[str, Any] = {}
+        if log_source is not None:
+            update_kwargs["log_source"] = log_source
+        if pid is not None:
+            update_kwargs["pid"] = pid
+
+        if not update_kwargs:
+            return ToolResult(
+                ok=False,
+                error_code="no_changes",
+                message="No fields to update. Provide --log or --pid",
+            )
+
+        try:
+            updated = await self._store.update(alias, **update_kwargs)
+        except ValueError as exc:
+            return ToolResult(ok=False, error_code="invalid_update", message=str(exc))
+
+        return ToolResult(ok=True, data=updated)
 
 
 class UnwatchTaskTool(BaseTool):

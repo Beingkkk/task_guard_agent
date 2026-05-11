@@ -28,23 +28,21 @@
 
 1. **注册信息**：每个任务需提供
    - 任务别名（唯一标识）
-   - PID（可选；提供则采集 CPU/内存。Bash 模式启动后自动获取子进程 pid，无需用户指定）
-   - 日志源路径：支持两种模式
-     - **Bash 模式**：`bash://<命令>`，Agent 通过子进程执行命令并实时捕获 stdout/stderr 增量；子进程启动后自动获取 pid，无需用户指定
-     - **文件模式**：`file://<绝对路径>`，单文件或目录
-       - 单文件：如 `file://C:\logs\download.log`
-       - 目录：如 `file://D:\app\output\logs`，Agent 监控该目录下文本文件的新增内容（追踪最近修改的文件，按扩展名过滤如 `.txt`, `.log`）
+   - PID（可选；提供则采集 CPU/内存）
+   - 日志源路径：**仅支持文件模式** `file://<绝对路径>`
+     - 单文件：`file://C:\logs\download.log`
+     - 多文件（分号分隔）：`file://C:\logs\a.log;C:\logs\b.log`
+     - 路径必须是**具体文件**，目录不被支持
 
 2. **注册方式**（按优先级排列）
    - **CLI 命令注册（主要入口）**：Agent 运行期间，通过本地命令行与 Agent 交互注册、注销、查询任务。
      ```bash
      # 注册任务
-     taskguard watch <别名> [--pid <PID>] [--log <URI>]
+     taskguard watch <别名> --log <URI> [--pid <PID>]
      # 例：
-     taskguard watch 下载A --pid 12345 --log file://C:\data\dl.log
-     taskguard watch 服务B --log file://D:\logs\
-     taskguard watch 下载C --log bash://wget -c http://example.com/large.zip
-     taskguard watch 飞书 --pid 42816
+     taskguard watch 下载A --log file://C:\data\dl.log --pid 12345
+     taskguard watch 服务B --log file://C:\logs\service.log
+     taskguard watch 合并任务 --log "file://C:\logs\a.log;C:\logs\b.log" --pid 42816
 
      # 修改已有任务
      taskguard watch <别名> --revise [--pid <PID>] [--log <URI>]
@@ -81,10 +79,10 @@
 
 按可配置间隔（默认 30 秒）执行采集循环：
 
-- **日志增量采集**：
-  - **Bash 模式**：维护子进程 stdout 的读取偏移，增量读取新输出行。
-  - **文件模式 - 单文件**：维护文件偏移量，增量读取新追加内容。
-  - **文件模式 - 目录**：自上一采集周期后，扫描目录内所有**新增或修改**的文本文件（可配置文件扩展名过滤，如 `.txt`, `.log`），读取其新增行。当目录内最新文件超过 `stalled_threshold`（默认 300 秒）无增长时，视为输出停滞。
+- **日志增量采集**（仅文件模式）：
+  - 维护每个日志文件的偏移量，增量读取新追加内容。
+  - 支持同时监控多个文件（每个文件独立维护偏移量）。
+  - 当文件超过 `stalled_threshold`（默认 300 秒）无增长时，视为输出停滞。
 - **进程指标**（若提供 PID）：
   使用 `psutil`（跨平台）获取 Windows 进程
   - CPU 使用率（%）（通过两次采样计算）
@@ -136,7 +134,7 @@
 2. **基本指令支持**：
    | 命令 | 功能 | 示例 |
    |---|---|---|
-   | `/watch <别名> [--pid <PID>] [--log <uri>]` | 注册监控任务 | `/watch 下载A --log bash://wget -c http://a.com/f.zip` |
+   | `/watch <别名> --log <uri> [--pid <PID>]` | 注册监控任务 | `/watch 下载A --log file://C:\data\dl.log --pid 12345` |
    | `/watch <别名> --revise [--pid <PID>] [--log <uri>]` | 修改已有任务 | `/watch 下载A --revise --pid 67890` |
    | `/unwatch <别名>` | 注销监控任务 | `/unwatch 下载A` |
    | `/list` | 列出所有任务（含实时 pid 状态） | `/list` |
@@ -310,7 +308,7 @@
 
 | Tool | 功能 | 触发方式 |
 |---|---|---|
-| `watch_task` | 注册/修改监控任务（`--revise` 修改已有） | CLI `watch` / 飞书 `/watch` |
+| `watch_task` | 注册/修改监控任务（`--revise` 修改已有，仅 `file://`） | CLI `watch` / 飞书 `/watch` |
 | `unwatch_task` | 注销监控任务 | CLI `unwatch` / 飞书 `/unwatch` |
 | `list_tasks` | 列出所有任务（含实时 pid 状态） | CLI `list` / 飞书 `/list` |
 | `query_status` | 查询任务详情（固定宽度 key-value 格式） | CLI `status` / 飞书 `/status` / 自然语言 |
@@ -333,8 +331,7 @@
 
 | 采集器 | 核心机制 | 状态维护 |
 |---|---|---|
-| `BashCollector` | `asyncio.create_subprocess_shell` + `asyncio.Queue` 缓冲；启动后将子进程 pid 写入 `task.state["bash"]["pid"]` | `asyncio.subprocess.Process` 实例 |
-| `FileCollector` | 单文件：`seek(offset)` 增量读取；目录：扫描最近修改的匹配文件 | `file_offset` 存储在 task.state |
+| `FileCollector` | 单文件 `seek(offset)` 增量读取；支持多文件并行监控 | 每个文件的 `file_offset` 存储在 `task.state["file_offsets"]` |
 | `ProcessCollector` | `psutil.Process(pid)` 两次采样计算 CPU | 无持久状态，每次采集重新查询 |
 
 ### 4.3 数据模型
@@ -345,12 +342,12 @@
 |---|---|---|
 | `alias` | `str` | 唯一别名 |
 | `pid` | `int \| None` | 进程 PID（可选） |
-| `log_source` | `LogSource \| None` | 日志源（bash/file），与 pid 至少提供一个 |
-| `created_at` | `datetime` | 创建时间 |
-| `state` | `dict` | 运行时状态（偏移量、上次进度等） |
+| `log_source` | `LogSource \| None` | 日志源（仅 file 模式），与 pid 至少提供一个 |
+| `created_at` | `datetime` | 创建时间（UTC） |
+| `state` | `dict` | 运行时状态（文件偏移量、上次进度等） |
 | `config` | `TaskConfig` | 任务级配置（阈值覆盖） |
 
-`LogSource`：`type`（bash/file）、`path`、`command`、`extensions`
+`LogSource`：`paths`（文件路径列表）、`extensions`
 
 `TaskConfig`：`collect_interval`、`stalled_threshold`、`llm_min_interval`、`alert_cooldown`、`cpu_warning`、`memory_warning`、`memory_critical`
 
@@ -440,22 +437,19 @@ tasks:
   - alias: "下载A"
     pid: 12345
     log_source:
-      type: "file"
-      path: "C:\\data\\dl.log"
+      paths: ["C:\\data\\dl.log"]
     config:
       collect_interval: 30
       stalled_threshold: 600
 
   - alias: "服务B"
     log_source:
-      type: "file"
-      path: "D:\\app\\output\\logs"
-      extensions: [".log"]
+      paths: ["C:\\logs\\service.log"]
 
-  - alias: "下载C"
+  - alias: "合并任务"
+    pid: 42816
     log_source:
-      type: "bash"
-      command: "wget -c http://example.com/large.zip -O C:\\data\\large.zip"
+      paths: ["C:\\logs\\a.log", "C:\\logs\\b.log"]
 ```
 
 ---

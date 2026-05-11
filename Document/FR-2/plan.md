@@ -25,13 +25,12 @@ FR-2 本身不做进度解析、不做异常判断、不发送告警，只完成
 
 - **数据模型**：`Snapshot`、`ProcessInfo`、`ProgressInfo`（[spec §4.3](../spec.md)）
 - **采集器层**：
-  - `BashCollector`：为 `bash://` 任务启动 `asyncio.subprocess`，增量读取 stdout/stderr
-  - `FileCollector`：单文件 `seek(offset)` 增量读取；目录模式扫描最近修改的匹配文件
+  - `FileCollector`：单文件 `seek(offset)` 增量读取；支持同时监控多个文件（每个文件独立维护偏移量）
   - `ProcessCollector`：`psutil` 采集 CPU / 内存 / 进程状态
 - **存储层**：`MetricsStore`（`aiosqlite` 异步 SQLite），含 `logs` / `metrics` 表
 - **调度层**：`AgentHarness` 骨架（定时驱动 + 顺序管道，3 个注入点预留）
-- **任务状态维护**：`Task.state` 中存储运行时偏移量、子进程句柄、上次采集时间等
-- **停滞检测**：文件目录模式下，最新文件超过 `stalled_threshold` 秒无增长时标记
+- **任务状态维护**：`Task.state` 中存储运行时文件偏移量、上次采集时间等
+- **停滞检测**：文件超过 `stalled_threshold` 秒无增长时标记
 
 ### 2.2 Out of Scope（由后续 FR 承接）
 
@@ -49,12 +48,11 @@ FR-2 本身不做进度解析、不做异常判断、不发送告警，只完成
 
 ### 2.3 验收标准 (Acceptance Criteria)
 
-- [ ] 注册 `bash://` 任务后启动 `AgentHarness`，子进程 stdout 增量被采集并写入 `logs` 表。
 - [ ] 注册 `file://` 单文件任务后，文件追加内容被增量读取并写入 `logs` 表。
-- [ ] 注册 `file://` 目录任务后，目录内最新匹配文件的新增行被读取并写入 `logs` 表；超过 `stalled_threshold` 无增长时 `Snapshot` 中标记 stalled。
+- [ ] 注册 `file://` 多文件任务后，每个文件追加内容独立被增量读取并写入 `logs` 表。
 - [ ] 注册带 `pid` 的任务后，`metrics` 表中每 30 秒出现一条 CPU / 内存 / 状态记录。
-- [ ] 进程退出时（PID 消失），`metrics` 表中记录 `status=exited` 及 `exit_code`（如可获取）。
-- [ ] `AgentHarness` 支持 `run()` / `shutdown()`，停止时清理子进程。
+- [ ] 进程退出时（PID 消失），`metrics` 表中记录 `status=exited`。
+- [ ] `AgentHarness` 支持 `run()` / `shutdown()`。
 - [ ] `pytest` 全绿，`ruff check .` / `mypy taskguard/` 无错误。
 
 ---

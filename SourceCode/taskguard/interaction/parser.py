@@ -30,7 +30,6 @@ class CommandParser:
         "unwatch": "unwatch_task",
         "list": "list_tasks",
         "status": "query_status",
-        "progress": "query_progress",
         "cleanup": "cleanup_exited",
         "update": "collect_all",
         "help": "help",

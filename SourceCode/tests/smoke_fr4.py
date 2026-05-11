@@ -14,7 +14,7 @@ from taskguard.interaction.parser import CommandParser, ParseError
 from taskguard.llm.base import BaseProvider, LLMResponse, Message, Usage
 from taskguard.tools.collect_all import CollectAllTool
 from taskguard.tools.help import HelpTool
-from taskguard.tools.query import QueryProgressTool
+from taskguard.tools.query import QueryStatusTool
 
 
 class FakeProvider(BaseProvider):
@@ -115,8 +115,25 @@ async def test_tools() -> None:
     assert "/update" in result.data
     print("[OK] HelpTool")
 
-    # QueryProgressTool (mock)
+    # QueryStatusTool (mock TaskStore + MetricsStore)
+    from taskguard.models.task import LogSource, Task
+
+    task = Task(alias="test", log_source=LogSource(type="file", path="C:\\test.log"))
+    store = AsyncMock()
+    store.get = AsyncMock(return_value=task)
+
     metrics = AsyncMock()
+    metrics.query_metrics = AsyncMock(
+        return_value=[
+            {
+                "alias": "test",
+                "cpu_percent": 12.3,
+                "memory_working_set": 156000000,
+                "status": "running",
+                "timestamp": "2026-05-10T10:00:00Z",
+            }
+        ]
+    )
     metrics.query_progress = AsyncMock(
         return_value=[
             {
@@ -128,11 +145,13 @@ async def test_tools() -> None:
             }
         ]
     )
-    progress_tool = QueryProgressTool(metrics)
-    result = await progress_tool.execute({"alias": "test"})
+    metrics.query_logs = AsyncMock(return_value=[])
+    status_tool = QueryStatusTool(store, metrics)
+    result = await status_tool.execute({"alias": "test"})
     assert result.ok
-    assert result.data["percentage"] == 68.0
-    print("[OK] QueryProgressTool")
+    assert result.data["latest_progress"]["percentage"] == 68.0
+    assert result.data["latest_metrics"]["cpu_percent"] == 12.3
+    print("[OK] QueryStatusTool (unified)")
 
     # CollectAllTool (mock)
     harness = MagicMock()

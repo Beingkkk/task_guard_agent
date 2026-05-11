@@ -35,11 +35,6 @@ class TestCommandParser:
         assert cmd.tool_name == "query_status"
         assert cmd.params["alias"] == "下载A"
 
-    def test_progress(self, parser: CommandParser) -> None:
-        cmd = parser.parse("/progress 下载A")
-        assert cmd.tool_name == "query_progress"
-        assert cmd.params["alias"] == "下载A"
-
     def test_help(self, parser: CommandParser) -> None:
         cmd = parser.parse("/help")
         assert cmd.tool_name == "help"

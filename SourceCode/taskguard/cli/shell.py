@@ -254,9 +254,6 @@ class InteractiveShell:
         if tool_name == "watch_task" and hasattr(result.data, "to_dict"):
             return self._format_dict_markdown(result.data.to_dict())
 
-        if tool_name == "query_progress" and isinstance(result.data, dict):
-            return self._format_progress_markdown(result.data)
-
         if tool_name == "collect_all" and isinstance(result.data, dict):
             last = result.data.get("last_collected", "unknown")
             return f"Last collected: {self._to_cst(last)}"
@@ -342,7 +339,7 @@ class InteractiveShell:
         return "\n".join(lines)
 
     def _format_dict_markdown(self, data: dict[str, Any]) -> str:
-        """Format a task dict as aligned key-value blocks."""
+        """Format unified task status as aligned key-value blocks."""
         lines: list[str] = []
 
         alias = data.get("alias", "Unknown")
@@ -369,6 +366,51 @@ class InteractiveShell:
                 lines.append(self._format_kv_block("Log Source", ls_items))
                 lines.append("")
 
+        # Latest metrics (from metrics table)
+        latest_metrics = data.get("latest_metrics")
+        if latest_metrics and isinstance(latest_metrics, dict):
+            metric_items: list[tuple[str, Any]] = []
+            for key in ("cpu_percent", "memory_working_set", "status", "timestamp"):
+                if key in latest_metrics:
+                    value = latest_metrics[key]
+                    if value is None:
+                        value = "-"
+                    elif key == "timestamp":
+                        value = self._to_cst(value)
+                    metric_items.append((key, value))
+            if metric_items:
+                lines.append(self._format_kv_block("Metrics (latest)", metric_items))
+                lines.append("")
+
+        # Latest progress (from progress table)
+        latest_progress = data.get("latest_progress")
+        if latest_progress and isinstance(latest_progress, dict):
+            progress_items: list[tuple[str, Any]] = []
+            for key in ("percentage", "speed", "eta", "status", "raw_summary", "confidence", "extracted_by", "timestamp"):
+                if key in latest_progress:
+                    value = latest_progress[key]
+                    if value is None or value == "":
+                        value = "-"
+                    elif key == "timestamp":
+                        value = self._to_cst(value)
+                    progress_items.append((key, value))
+            if progress_items:
+                lines.append(self._format_kv_block("Progress (latest)", progress_items))
+                lines.append("")
+
+        # Recent logs
+        recent_logs = data.get("recent_logs")
+        if recent_logs and isinstance(recent_logs, dict):
+            log_lines = recent_logs.get("lines", [])
+            entry_count = recent_logs.get("entry_count", 0)
+            if log_lines:
+                lines.append(f"Recent Logs ({len(log_lines)} lines from {entry_count} entries):")
+                for line in log_lines[-10:]:  # Show last 10 lines in status view
+                    lines.append(f"  {line}")
+                if len(log_lines) > 10:
+                    lines.append(f"  ... ({len(log_lines) - 10} more lines)")
+                lines.append("")
+
         # Config
         config = data.get("config")
         if config and isinstance(config, dict):
@@ -385,32 +427,6 @@ class InteractiveShell:
             lines.append("")
 
         return "\n".join(lines)
-
-    def _format_progress_markdown(self, data: dict[str, Any]) -> str:
-        """Format progress data as aligned key-value block."""
-        field_labels = {
-            "alias": "alias",
-            "timestamp": "timestamp",
-            "percentage": "percentage",
-            "speed": "speed",
-            "eta": "eta",
-            "status": "status",
-            "raw_summary": "summary",
-            "confidence": "confidence",
-            "extracted_by": "extracted_by",
-        }
-
-        items = []
-        for key, label in field_labels.items():
-            if key in data:
-                value = data[key]
-                if value is None or value == "":
-                    value = "-"
-                elif key == "timestamp":
-                    value = self._to_cst(value)
-                items.append((label, value))
-
-        return self._format_kv_block("Progress", items)
 
     def _format_table(self, rows: list[dict[str, Any]]) -> str:
         """Simple table formatter for list output."""
@@ -432,8 +448,7 @@ class InteractiveShell:
   /watch <别名> --revise --pid <PID>         修改已有任务
   /unwatch <别名>                            注销监控任务
   /list                                      列出所有任务
-  /status <别名>                             查询任务详情
-  /progress <别名>                           查询最新进度
+  /status <别名>                             查询任务综合状态
   /update                                    手动刷新全量收集
   /cleanup                                   清理已退出的任务
   /help                                      显示此帮助

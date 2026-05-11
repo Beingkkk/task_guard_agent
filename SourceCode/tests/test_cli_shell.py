@@ -181,29 +181,37 @@ class TestInteractiveShell:
         assert "|" not in captured.out  # No markdown table pipes
 
     @pytest.mark.asyncio
-    async def test_progress_output_format(self, mock_harness, mock_store, mock_metrics, capsys):
+    async def test_status_includes_progress_section(
+        self, mock_harness, mock_store, mock_metrics, capsys
+    ):
         from taskguard.cli.shell import InteractiveShell
 
         shell = InteractiveShell(mock_harness, mock_store, mock_metrics)
 
-        progress_data = {
+        status_data = {
             "alias": "demo",
-            "percentage": 45.2,
-            "speed": "3.5 MB/s",
-            "status": "normal",
-            "timestamp": "2026-05-10T12:00:00Z",
+            "pid": 12345,
+            "created_at": "2026-05-10T10:00:00Z",
+            "source": "cli",
+            "latest_progress": {
+                "percentage": 45.2,
+                "speed": "3.5 MB/s",
+                "status": "normal",
+                "timestamp": "2026-05-10T12:00:00Z",
+            },
         }
 
         with (
-            patch("asyncio.to_thread", side_effect=["/progress demo", "exit"]),
+            patch("asyncio.to_thread", side_effect=["/status demo", "exit"]),
             patch("taskguard.cli.shell.ToolRegistry") as mock_registry,
         ):
             mock_tool = AsyncMock()
-            mock_tool.execute = AsyncMock(return_value=MagicMock(ok=True, data=progress_data))
+            mock_tool.execute = AsyncMock(return_value=MagicMock(ok=True, data=status_data))
             mock_registry.get = MagicMock(return_value=mock_tool)
             await shell.run()
 
         captured = capsys.readouterr()
+        assert "Task: demo" in captured.out
         assert "Progress" in captured.out
         assert "percentage" in captured.out
         assert "|" not in captured.out  # No markdown table pipes

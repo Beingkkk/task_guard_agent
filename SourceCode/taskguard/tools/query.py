@@ -3,6 +3,7 @@
 Relates-to: FR-1, FR-4
 """
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -39,13 +40,18 @@ class ListTasksTool(BaseTool):
 
 
 class QueryStatusTool(BaseTool):
-    """Query detailed status of a specific task."""
+    """Query unified status of a task (metadata + latest metrics + progress + recent logs)."""
 
     name = "query_status"
-    description = "Query task details"
+    description = "Query task status including metadata, latest metrics, progress, and recent logs"
 
-    def __init__(self, store: TaskStore | None = None) -> None:
+    def __init__(
+        self,
+        store: TaskStore | None = None,
+        metrics_store: MetricsStore | None = None,
+    ) -> None:
         self._store = store
+        self._metrics_store = metrics_store
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         if self._store is None:
@@ -60,43 +66,42 @@ class QueryStatusTool(BaseTool):
                 ok=False, error_code="alias_not_found", message=f"Alias '{alias}' not found"
             )
 
-        return ToolResult(ok=True, data=task.to_dict())
+        result: dict[str, Any] = task.to_dict()
 
+        # Query metrics store for runtime data
+        if self._metrics_store is not None:
+            since = datetime.now(UTC) - timedelta(hours=24)
 
-class QueryProgressTool(BaseTool):
-    """Query latest progress for a task from SQLite."""
+            # Latest process metrics
+            try:
+                metrics_rows = await self._metrics_store.query_metrics(alias, since)
+                if metrics_rows:
+                    result["latest_metrics"] = metrics_rows[-1]
+            except Exception:
+                pass
 
-    name = "query_progress"
-    description = "Query latest progress for a task"
+            # Latest progress extraction
+            try:
+                progress_rows = await self._metrics_store.query_progress(alias, since)
+                if progress_rows:
+                    result["latest_progress"] = progress_rows[-1]
+            except Exception:
+                pass
 
-    def __init__(self, metrics_store: MetricsStore | None = None) -> None:
-        self._metrics_store = metrics_store
+            # Recent logs (last 50 entries within 24h)
+            try:
+                log_rows = await self._metrics_store.query_logs(alias, since)
+                if log_rows:
+                    recent_lines: list[str] = []
+                    for row in log_rows[-50:]:
+                        lines_raw = row.get("lines", "[]")
+                        lines = json.loads(lines_raw) if isinstance(lines_raw, str) else lines_raw
+                        recent_lines.extend(lines)
+                    result["recent_logs"] = {
+                        "lines": recent_lines[-50:],
+                        "entry_count": len(log_rows),
+                    }
+            except Exception:
+                pass
 
-    async def execute(self, params: dict[str, Any]) -> ToolResult:
-        if self._metrics_store is None:
-            return ToolResult(
-                ok=False,
-                error_code="metrics_unavailable",
-                message="Metrics store is not available",
-            )
-
-        alias = params.get("alias", "").strip()
-        if not alias:
-            return ToolResult(
-                ok=False,
-                error_code="invalid_alias",
-                message="Alias is required",
-            )
-
-        since = datetime.now(UTC) - timedelta(hours=24)
-        rows = await self._metrics_store.query_progress(alias, since)
-        if not rows:
-            return ToolResult(
-                ok=False,
-                error_code="no_progress_data",
-                message=f"No progress data found for '{alias}' in the last 24 hours",
-            )
-
-        # Return the latest row
-        latest = rows[-1]
-        return ToolResult(ok=True, data=latest)
+        return ToolResult(ok=True, data=result)

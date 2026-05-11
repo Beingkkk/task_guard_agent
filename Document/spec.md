@@ -64,7 +64,6 @@
      /unwatch <别名>
      /list
      /status <别名>
-     /progress <别名>
      /update
      ```
      飞书注册本质上是通过远程通道调用与 CLI 相同的 Tool Registry API，两者共享同一套命令解析和权限校验逻辑。
@@ -88,6 +87,7 @@
   - CPU 使用率（%）（通过两次采样计算）
   - 内存：工作集 (Working Set) / 私有内存 (Private Bytes) / 占系统物理内存百分比
   - 进程状态（运行/无响应/已退出）
+  - **后续扩展**：磁盘读写吞吐 (MB/s)、网络发送/接收吞吐 (Mbps) — 通过 `psutil.Process.io_counters()` 与 `psutil.net_io_counters()` 采集，扩展 `ProcessInfo` 与 `metrics` 表 schema
 - **时间戳**：所有原始数据带精确时间戳（UTC），存入 SQLite 历史表。Shell 展示层统一转换为 CST (UTC+8) 北京时间显示。
 
 **存储策略**：
@@ -122,6 +122,10 @@
 
 4. **上下文窗口**：每次调用仅传入最近 N 行日志（默认 50 行），避免上下文过长。
 
+5. **后续扩展**（v0.2+）：
+   - **日志摘要**：对最近 N 行日志生成一句话摘要，供 `/status` 中"Logs Summary"段位展示。需独立 system prompt + 缓存以避免重复消费 token。
+   - **日志等级统计**：结合正则（提取 `INFO/WARN/ERROR/FATAL` 等通用等级标记）与 LLM（识别非标准化日志中的隐含等级），统计各等级出现次数。结果纳入 `/status` 中"Log Levels"段位。
+
 ### FR-4 用户体验与交互层
 
 1. **交互式 Shell 模式**：
@@ -138,8 +142,7 @@
    | `/watch <别名> --revise [--pid <PID>] [--log <uri>]` | 修改已有任务 | `/watch 下载A --revise --pid 67890` |
    | `/unwatch <别名>` | 注销监控任务 | `/unwatch 下载A` |
    | `/list` | 列出所有任务（含实时 pid 状态） | `/list` |
-   | `/status <别名>` | 查询任务详情 | `/status 下载A` |
-   | `/progress <别名>` | 查询最新进度（SQLite） | `/progress 下载A` |
+   | `/status <别名>` | 查询任务综合状态（注册信息 + 最新进程指标 + 进度解析 + 最近日志） | `/status 下载A` |
    | `/update` | 手动刷新，执行一次全量状态收集 | `/update` |
    | `/help` | 显示帮助 | `/help` |
    | `exit` | 退出 Agent | `exit` |
@@ -311,8 +314,7 @@
 | `watch_task` | 注册/修改监控任务（`--revise` 修改已有，仅文件路径） | CLI `watch` / 飞书 `/watch` |
 | `unwatch_task` | 注销监控任务 | CLI `unwatch` / 飞书 `/unwatch` |
 | `list_tasks` | 列出所有任务（含实时 pid 状态） | CLI `list` / 飞书 `/list` |
-| `query_status` | 查询任务详情（固定宽度 key-value 格式） | CLI `status` / 飞书 `/status` / 自然语言 |
-| `query_progress` | 查询最新进度（固定宽度 key-value 格式） | CLI `progress` / 飞书 `/progress` / 自然语言 |
+| `query_status` | 查询任务综合状态：注册信息、最新进程指标、进度解析、最近日志（固定宽度 key-value 格式） | CLI `status` / 飞书 `/status` / 自然语言 |
 | `collect_all` | 手动刷新全量收集 | CLI `/update` / 飞书 `/update` / 自然语言 |
 | `query_history` | 查询历史异常 | 自然语言 |
 | `analyze_logs` | 分析日志内容 | 自然语言 / 定期触发 |

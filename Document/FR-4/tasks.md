@@ -3,7 +3,15 @@
 **Spec**: [Document/spec.md §3 FR-4](../spec.md)
 **Plan**: [Document/FR-4/plan.md](./plan.md)
 **前置条件**: FR-1（Task Registry、CLI、ToolRegistry）、FR-2（AgentHarness、Collector、MetricsStore）、FR-3（Provider、AnalyzerPipeline、ConfigLoader、RegexExtractor）已完成
-**更新日期**: 2026-05-10
+**更新日期**: 2026-05-11
+
+---
+
+## ⚠️ Post-FR-4 设计变更（2026-05-11）
+
+`/status` 与 `/progress` 合并：原 `QueryProgressTool` 已并入 `QueryStatusTool`，`/progress` 命令同步取消。`QueryStatusTool` 现接收 `TaskStore` + `MetricsStore`，返回**综合状态**：注册信息 + 最新进程指标 + 最新进度解析 + 最近日志。
+
+历史任务 T412 / T422 中关于 `QueryProgressTool` 的描述保留作为实现记录（已 ✅ 标记），但**最终代码状态以 spec.md §4.2.2 和 FR-4/plan.md §11.1 为准**。
 
 ---
 
@@ -494,7 +502,7 @@ FR-4 完成需同时满足：
 - [ ] 单命令模式 `taskguard watch/unwatch/list/status` 行为与 FR-1 一致（无回归）
 - [ ] `/watch --revise` 能正确修改已有任务的 log_source / pid
 - [ ] `/list` 输出含实时 `pid_status`（bash 任务首次采集后自动显示）
-- [ ] `/status` 和 `/progress` 输出为固定宽度 key-value 格式（非 Markdown 表格）
+- [ ] `/status` 输出为固定宽度 key-value 格式（按段位渲染：Basic / Log Source / Metrics (latest) / Progress (latest) / Recent Logs / Config / Runtime State）
 - [ ] `/update` 触发全量收集并输出 `Last collected: <本地时间>`
 - [ ] PR 描述含：
   - 关联 FR-4

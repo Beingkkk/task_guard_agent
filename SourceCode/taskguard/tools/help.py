@@ -14,8 +14,7 @@ _HELP_TEXT = """\
   /watch <别名> --revise [--log <路径>]      修改已有任务
   /unwatch <别名>                            注销监控任务
   /list                                      列出所有任务
-  /status <别名>                             查询任务详情
-  /progress <别名>                           查询最新进度
+  /status <别名>                             查询任务综合状态
   /update                                    手动刷新全量收集
   /help                                      显示此帮助
 

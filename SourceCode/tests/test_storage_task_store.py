@@ -125,7 +125,9 @@ class TestYamlMerge:
         store = TaskStore(tmp_path)
         yaml_path = tmp_path / "tasks.yaml"
         data = {
-            "tasks": [{"alias": "下载C", "log_source": {"type": "bash", "command": "wget ..."}}]
+            "tasks": [
+                {"alias": "下载C", "log_source": {"type": "file", "path": "C:\\test.log"}}
+            ]
         }
         yaml_path.write_text(yaml.dump(data), encoding="utf-8")
 

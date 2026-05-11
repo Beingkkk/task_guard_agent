@@ -36,7 +36,7 @@ class WatchTaskTool(BaseTool):
         log_source: LogSourceParser | None = None
         if log_uri:
             try:
-                log_source = LogSourceParser.from_uri(log_uri)
+                log_source = LogSourceParser.parse(log_uri)
             except ValueError as exc:
                 return ToolResult(ok=False, error_code="invalid_uri", message=str(exc))
 

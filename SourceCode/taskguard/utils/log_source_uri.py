@@ -1,4 +1,4 @@
-"""Log source URI parsing for file:// scheme.
+"""Log source path parsing.
 
 Relates-to: FR-1
 """
@@ -23,40 +23,46 @@ class LogSource:
         return [p.strip() for p in self.path.split(";") if p.strip()]
 
     @classmethod
-    def from_uri(cls, uri: str) -> "LogSource":
-        """Parse a file:// URI.
+    def parse(cls, input_str: str) -> "LogSource":
+        """Parse a log source from a bare path or file:// URI.
 
         Supports single file or multiple files separated by semicolons:
-            file://C:\\data\\dl.log
-            file://C:\\logs\\a.log;C:\\logs\\b.log
+            C:\\data\\dl.log
+            C:\\logs\\a.log;C:\\logs\\b.log
+            file://C:\\data\\dl.log         (legacy URI form)
 
         Raises:
-            ValueError: If the URI is malformed, path is not absolute,
-                        or path points to a directory.
+            ValueError: If the path is empty, not absolute, or points to a directory.
         """
-        if "://" not in uri:
-            raise ValueError(f"URI must contain scheme separator '://': {uri}")
+        raw = input_str.strip()
+        if not raw:
+            raise ValueError("Log path must not be empty")
 
-        scheme, body = uri.split("://", 1)
+        # Strip file:// prefix if present (legacy compatibility)
+        if raw.lower().startswith("file://"):
+            raw = raw[7:]
 
-        if scheme != "file":
+        # Reject other schemes
+        if "://" in raw:
+            scheme = raw.split("://", 1)[0]
             raise ValueError(
-                f"Unsupported scheme '{scheme}'. Only file:// is supported: {uri}"
+                f"Unsupported scheme '{scheme}://'. Only bare path or file:// is allowed."
             )
 
-        raw_paths = body
-        paths = [p.strip() for p in raw_paths.split(";") if p.strip()]
+        paths = [p.strip() for p in raw.split(";") if p.strip()]
         if not paths:
-            raise ValueError("file:// must specify at least one file path")
+            raise ValueError("Log path must specify at least one file")
 
         for path in paths:
             p = PureWindowsPath(path)
             if not p.is_absolute():
-                raise ValueError(f"file:// path must be absolute: {path}")
-            # On Windows, check if path looks like a directory (ends with separator)
+                raise ValueError(f"Path must be absolute: {path}")
             if path.endswith("\\") or path.endswith("/"):
-                raise ValueError(
-                    f"file:// must point to a file, not a directory: {path}"
-                )
+                raise ValueError(f"Path must point to a file, not a directory: {path}")
 
-        return cls(type="file", path=raw_paths)
+        return cls(type="file", path=raw)
+
+    @classmethod
+    def from_uri(cls, uri: str) -> "LogSource":
+        """Legacy alias for parse(). Kept for backward compatibility."""
+        return cls.parse(uri)

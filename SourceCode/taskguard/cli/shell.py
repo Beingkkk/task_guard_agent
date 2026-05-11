@@ -61,10 +61,27 @@ class InteractiveShell:
         self._prompt = "> "
         self._harness_task: asyncio.Task[Any] | None = None
 
+    @staticmethod
+    def _setup_logging(data_dir: Path) -> None:
+        """Route all logging to data/taskguard.log; silence console."""
+        log_file = data_dir / "taskguard.log"
+        root = logging.getLogger()
+        # Remove default handlers to avoid duplicate console output
+        for h in list(root.handlers):
+            root.removeHandler(h)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
+        root.addHandler(file_handler)
+        root.setLevel(logging.INFO)
+
     @classmethod
     async def from_config(cls, config_dir: Path, data_dir: Path) -> "InteractiveShell":
         """Factory: assemble full agent environment from config."""
         data_dir.mkdir(parents=True, exist_ok=True)
+        cls._setup_logging(data_dir)
 
         app_config = ConfigLoader.load(config_dir)
 
@@ -410,8 +427,8 @@ class InteractiveShell:
         return """\
 可用命令：
 
-  /watch <别名> --log <URI> [--pid <PID>]    注册监控任务
-  /watch <别名> --revise --log <URI>         修改已有任务
+  /watch <别名> --log <路径> [--pid <PID>]   注册监控任务
+  /watch <别名> --revise --log <路径>        修改已有任务
   /watch <别名> --revise --pid <PID>         修改已有任务
   /unwatch <别名>                            注销监控任务
   /list                                      列出所有任务

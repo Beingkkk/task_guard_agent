@@ -10,8 +10,8 @@ from taskguard.tools.base import BaseTool, ToolResult
 _HELP_TEXT = """\
 可用命令：
 
-  /watch <别名> --log <URI> [--pid <PID>]    注册监控任务
-  /watch <别名> --revise [--log <URI>]        修改已有任务
+  /watch <别名> --log <路径> [--pid <PID>]   注册监控任务
+  /watch <别名> --revise [--log <路径>]      修改已有任务
   /unwatch <别名>                            注销监控任务
   /list                                      列出所有任务
   /status <别名>                             查询任务详情

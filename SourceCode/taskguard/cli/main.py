@@ -85,11 +85,11 @@ def _handle_result(
 @app.command()
 def watch(
     alias: Annotated[str, typer.Argument(help="任务别名")],
-    log: Annotated[str, typer.Option(help="日志文件路径（file://C:\\data\\dl.log 或多文件 file://a.log;b.log）")],
+    log: Annotated[str, typer.Option(help="日志文件路径（C:\\data\\dl.log 或多文件 C:\\a.log;C:\\b.log）")],
     pid: Annotated[int | None, typer.Option(help="进程 PID")] = None,
     tool: Annotated[str | None, typer.Option(help="显式标注工具类型（如 wget, rsync）")] = None,
 ) -> None:
-    """注册监控任务（仅支持 file:// 日志源）。"""
+    """注册监控任务（仅支持文件日志源；可省略 file:// 前缀）。"""
     data = _data_dir()
     data.mkdir(parents=True, exist_ok=True)
     store = TaskStore(data)

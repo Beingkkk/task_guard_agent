@@ -58,8 +58,26 @@ class TaskStore:
                 f"Unsupported tasks_state.json version {version}; expected 1",
             )
 
-        tasks = [Task.from_dict(t) for t in payload.get("tasks", [])]
+        tasks: list[Task] = []
+        skipped: list[str] = []
+        for t in payload.get("tasks", []):
+            log_data = t.get("log_source")
+            if log_data is not None and log_data.get("type") != "file":
+                skipped.append(t.get("alias", "?"))
+                continue
+            try:
+                tasks.append(Task.from_dict(t))
+            except (ValueError, KeyError) as exc:
+                logger.warning("Skipping invalid task %r: %s", t.get("alias", "?"), exc)
+        if skipped:
+            logger.warning(
+                "Dropped %d task(s) with unsupported log_source.type: %s",
+                len(skipped),
+                ", ".join(skipped),
+            )
         self._tasks = {t.alias: t for t in tasks}
+        if skipped:
+            await self.save_all(list(self._tasks.values()))
         return tasks
 
     async def save_all(self, tasks: list[Task]) -> None:

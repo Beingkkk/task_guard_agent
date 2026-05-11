@@ -48,8 +48,8 @@ FR-2 本身不做进度解析、不做异常判断、不发送告警，只完成
 
 ### 2.3 验收标准 (Acceptance Criteria)
 
-- [ ] 注册 `file://` 单文件任务后，文件追加内容被增量读取并写入 `logs` 表。
-- [ ] 注册 `file://` 多文件任务后，每个文件追加内容独立被增量读取并写入 `logs` 表。
+- [ ] 注册单文件任务后，文件追加内容被增量读取并写入 `logs` 表。
+- [ ] 注册多文件任务（分号分隔）后，每个文件追加内容独立被增量读取并写入 `logs` 表。
 - [ ] 注册带 `pid` 的任务后，`metrics` 表中每 30 秒出现一条 CPU / 内存 / 状态记录。
 - [ ] 进程退出时（PID 消失），`metrics` 表中记录 `status=exited`。
 - [ ] `AgentHarness` 支持 `run()` / `shutdown()`。
@@ -512,7 +512,7 @@ echo "line 1" > data/smoke.log
 echo "line 2" >> data/smoke.log
 
 # 1. 注册一个文件任务（单文件）
-taskguard watch smoke-file log=file://%CD%\data\smoke.log
+taskguard watch smoke-file --log %CD%\data\smoke.log
 
 # 2. 注册一个 bash 任务
 taskguard watch smoke-bash log=bash://python -c "import time; [print(f'ping {i}') or time.sleep(1) for i in range(5)]"

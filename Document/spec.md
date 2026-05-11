@@ -29,9 +29,9 @@
 1. **注册信息**：每个任务需提供
    - 任务别名（唯一标识）
    - PID（可选；提供则采集 CPU/内存）
-   - 日志源路径：**仅支持文件模式** `file://<绝对路径>`
-     - 单文件：`file://C:\logs\download.log`
-     - 多文件（分号分隔）：`file://C:\logs\a.log;C:\logs\b.log`
+   - 日志源路径：**仅支持具体文件路径**（可省略 `file://` 前缀）
+     - 单文件：`C:\logs\download.log`
+     - 多文件（分号分隔）：`C:\logs\a.log;C:\logs\b.log`
      - 路径必须是**具体文件**，目录不被支持
 
 2. **注册方式**（按优先级排列）
@@ -40,9 +40,9 @@
      # 注册任务
      taskguard watch <别名> --log <URI> [--pid <PID>]
      # 例：
-     taskguard watch 下载A --log file://C:\data\dl.log --pid 12345
-     taskguard watch 服务B --log file://C:\logs\service.log
-     taskguard watch 合并任务 --log "file://C:\logs\a.log;C:\logs\b.log" --pid 42816
+     taskguard watch 下载A --log C:\data\dl.log --pid 12345
+     taskguard watch 服务B --log C:\logs\service.log
+     taskguard watch 合并任务 --log "C:\logs\a.log;C:\logs\b.log" --pid 42816
 
      # 修改已有任务
      taskguard watch <别名> --revise [--pid <PID>] [--log <URI>]
@@ -134,7 +134,7 @@
 2. **基本指令支持**：
    | 命令 | 功能 | 示例 |
    |---|---|---|
-   | `/watch <别名> --log <uri> [--pid <PID>]` | 注册监控任务 | `/watch 下载A --log file://C:\data\dl.log --pid 12345` |
+   | `/watch <别名> --log <路径> [--pid <PID>]` | 注册监控任务 | `/watch 下载A --log C:\data\dl.log --pid 12345` |
    | `/watch <别名> --revise [--pid <PID>] [--log <uri>]` | 修改已有任务 | `/watch 下载A --revise --pid 67890` |
    | `/unwatch <别名>` | 注销监控任务 | `/unwatch 下载A` |
    | `/list` | 列出所有任务（含实时 pid 状态） | `/list` |
@@ -308,7 +308,7 @@
 
 | Tool | 功能 | 触发方式 |
 |---|---|---|
-| `watch_task` | 注册/修改监控任务（`--revise` 修改已有，仅 `file://`） | CLI `watch` / 飞书 `/watch` |
+| `watch_task` | 注册/修改监控任务（`--revise` 修改已有，仅文件路径） | CLI `watch` / 飞书 `/watch` |
 | `unwatch_task` | 注销监控任务 | CLI `unwatch` / 飞书 `/unwatch` |
 | `list_tasks` | 列出所有任务（含实时 pid 状态） | CLI `list` / 飞书 `/list` |
 | `query_status` | 查询任务详情（固定宽度 key-value 格式） | CLI `status` / 飞书 `/status` / 自然语言 |

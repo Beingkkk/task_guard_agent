@@ -507,15 +507,17 @@ FR-2 完成后，开发者在干净 venv 中执行以下脚本应全通：
 
 ```bash
 # 0. 准备测试数据目录与文件
-mkdir -p data
+mkdir -p data data/multi
 echo "line 1" > data/smoke.log
 echo "line 2" >> data/smoke.log
+echo "multi A line 1" > data/multi/a.log
+echo "multi B line 1" > data/multi/b.log
 
 # 1. 注册一个文件任务（单文件）
 taskguard watch smoke-file --log %CD%\data\smoke.log
 
-# 2. 注册一个 bash 任务
-taskguard watch smoke-bash log=bash://python -c "import time; [print(f'ping {i}') or time.sleep(1) for i in range(5)]"
+# 2. 注册一个多文件任务（验证分号分隔的多路径输入）
+taskguard watch smoke-multi --log "%CD%\data\multi\a.log;%CD%\data\multi\b.log"
 
 # 3. 启动 Agent（FR-2 期间可通过 Python 脚本启动 AgentLoop）
 python -c "
@@ -524,7 +526,6 @@ from pathlib import Path
 from taskguard.storage.task_store import TaskStore
 from taskguard.storage.metrics_store import MetricsStore
 from taskguard.agent import AgentHarness
-from taskguard.collectors.bash_collector import BashCollector
 from taskguard.collectors.file_collector import FileCollector
 
 store = TaskStore(Path('data'))
@@ -532,7 +533,6 @@ metrics = MetricsStore(Path('data/metrics.db'))
 loop = AgentHarness(store, metrics, collect_interval=5)
 
 # 注册 Collector（必须步骤，否则采集循环空转）
-loop.register_collector('bash', BashCollector())
 loop.register_collector('file', FileCollector())
 
 async def main():
@@ -550,6 +550,8 @@ asyncio.run(main())
 # 4. 追加日志，验证增量采集
 echo "line 3" >> data/smoke.log
 echo "line 4" >> data/smoke.log
+echo "multi A line 2" >> data/multi/a.log
+echo "multi B line 2" >> data/multi/b.log
 
 # 5. 查询 SQLite 验证数据写入
 python -c "
@@ -572,8 +574,8 @@ conn.close()
 
 # 6. 清理
 taskguard unwatch smoke-file
-taskguard unwatch smoke-bash
-rm data/smoke.log
+taskguard unwatch smoke-multi
+rm -rf data/smoke.log data/multi
 ```
 
 ---

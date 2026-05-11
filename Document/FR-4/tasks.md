@@ -53,7 +53,7 @@ T### [P?] [测试|实现|集成|文档] 简述
 - 关联：plan §9、FR-4.2
 - 文件：`tests/test_interaction_parser.py`
 - 用例：
-  - `/watch 下载A --log bash://wget -c http://a.com/f.zip --pid 12345` → `tool_name="watch_task"`，params 含 `alias`、`log`、`pid`
+  - `/watch 下载A --log C:\data\dl.log --pid 12345` → `tool_name="watch_task"`，params 含 `alias`、`log`、`pid`
   - `/watch 下载A --revise --log file://C:\data\new.log` → params 含 `revise: "True"`
   - `/unwatch 下载A` → `tool_name="unwatch_task"`，params 含 `alias`
   - `/list` → `tool_name="list_tasks"`，空 params

@@ -174,18 +174,21 @@ class Task:
 ```python
 @dataclass(slots=True, frozen=True)
 class LogSource:
-    type: Literal["bash", "file"]
-    # bash 模式
-    command: str | None = None
-    # file 模式
-    path: str | None = None       # 单文件或目录的绝对路径
-    extensions: tuple[str, ...] = (".log", ".txt", ".out")  # 仅 file 目录模式生效
+    type: Literal["file"]                 # 当前仅支持文件模式
+    path: str | None = None               # 绝对路径；多文件用分号分隔
+    extensions: tuple[str, ...] = (".log", ".txt", ".out")  # 保留字段（暂未使用）
+
+    @property
+    def paths(self) -> list[str]:
+        """以分号拆分的多文件路径列表。"""
+        ...
 ```
 
-**校验规则**（在 `LogSource.from_uri` 工厂方法内执行）：
+**校验规则**（在 `LogSource.parse` 工厂方法内执行；`from_uri` 是兼容别名）：
 
-- `bash://<command>`：`command` 非空，去除前后空白
-- 日志路径：必须是绝对路径、必须指向文件（非目录）；可接受 `file://` 前缀（自动剥离）
+- 输入可以是裸路径或带 `file://` 前缀的字符串（前缀会被自动剥离）
+- 路径必须是绝对路径，必须指向文件（不允许目录末尾的 `\`/`/`）
+- 多文件用 `;` 分隔，每段独立校验；空输入或非 `file://` 的其它 scheme 直接报错
 
 ### 7.3 `TaskConfig`
 
@@ -295,7 +298,7 @@ taskguard status <alias>
 
 **解析逻辑**：
 
-- `pid=12345` 与 `log=bash://...` 是 `key=value` 形式参数（spec §3 示例约定）
+- `pid=12345` 与 `log=<path>` 是 `key=value` 形式参数（spec §3 示例约定）
 - typer 命令体内，把位置参数与剩余 `key=value` 拆为 dict，转交 `ToolRegistry.get(name).execute(params)`
 - 退出码：成功返回 `0`，工具返回 `ok=False` 时按 `error_code` 映射到非零码（默认 `1`）
 - stderr 输出错误消息，stdout 输出表格 / JSON
@@ -354,7 +357,7 @@ FR-1 阶段 CLI 是短命进程，不存在跨进程并发写。FR-2 引入 Agen
 
 | 测试层 | 覆盖目标 | 关键用例 |
 |---|---|---|
-| 数据模型 | `LogSource.from_uri` 解析 | `bash://wget -c http://...`（嵌套 `://`）、`file://C:\\path`、空 URI、缺 scheme |
+| 数据模型 | `LogSource.parse` 解析 | 裸路径、多文件分号分隔、`file://` 前缀兼容、目录拒绝、相对路径拒绝、空输入、非法 scheme |
 | Storage | `TaskStore` 读写 | 空文件冷启动、损坏 JSON、原子写、版本不匹配 |
 | Tool 单元 | 4 个 Tool 的 happy path 与所有错误码 | mock `TaskStore`，断言 `ToolResult` |
 | Tool 集成 | YAML 合并 | YAML 与 JSON 同别名时 YAML 字段覆盖 |
@@ -370,7 +373,6 @@ FR-1 阶段 CLI 是短命进程，不存在跨进程并发写。FR-2 引入 Agen
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | Windows 路径反斜杠在 JSON / YAML 中转义混乱 | 写入路径错误 | 全程用 `pathlib.PureWindowsPath` 解析；JSON 序列化保持原始字符串；测试用例覆盖 `C:\\data\\` |
-| `bash://` 命令含 `&&`、引号、环境变量 | 后续 FR-2 启动子进程时 shell 注入风险 | FR-1 仅原样保存命令；FR-2 通过 `asyncio.create_subprocess_shell` 时再讨论沙箱（写 ADR） |
 | YAML 合并把用户从 CLI 删除的任务"复活" | 用户体验差 | spec §3 FR-1.3 已明示 YAML 优先；FR-1 在 `unwatch` 时若发现 alias 来自 YAML，返回 `error_code=alias_managed_by_yaml` 并提示用户从 YAML 删除 |
 | `tasks_state.json` 损坏（手工编辑后语法错） | Agent 启动失败 | 加载时 try/except，损坏则备份为 `.corrupt-<ts>` 并以空注册表启动，写 CRITICAL 日志 |
 | 别名含中文导致控制台编码问题 | `taskguard list` 在 cmd.exe 显示乱码 | `typer` 默认使用 stdout 编码；在 `cli/main.py` 启动时 `sys.stdout.reconfigure(encoding="utf-8")`（仅 Windows） |
@@ -406,8 +408,12 @@ FR-1 阶段 CLI 是短命进程，不存在跨进程并发写。FR-2 引入 Agen
 FR-1 完成后，开发者在干净 venv 中执行以下脚本应全通：
 
 ```bash
-# 1. 注册 bash 任务（核心场景 1）
-taskguard watch demo-bash log=bash://ping 127.0.0.1 -n 100
+# 0. 准备测试数据
+echo "ready" > %TEMP%\demo.log
+echo "ready" > %TEMP%\extra.log
+
+# 1. 注册单文件任务（核心场景 1）
+taskguard watch demo-file --log %TEMP%\demo.log
 echo $?  # 0
 
 # 2. 注册带 PID 的文件任务（核心场景 2）
@@ -416,17 +422,17 @@ echo $?  # 0
 
 # 3. 列表
 taskguard list
-# 预期输出包含 demo-bash 与 demo-pid
+# 预期输出包含 demo-file 与 demo-pid
 
 # 4. 状态查询
-taskguard status demo-bash
+taskguard status demo-file
 
 # 5. 重复别名应失败
-taskguard watch demo-bash log=bash://ls
+taskguard watch demo-file --log %TEMP%\extra.log
 echo $?  # 非零
 
 # 6. 注销
-taskguard unwatch demo-bash
+taskguard unwatch demo-file
 taskguard unwatch demo-pid
 
 # 7. 持久化验证：杀进程重启后任务清单应一致

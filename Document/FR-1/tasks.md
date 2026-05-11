@@ -58,24 +58,25 @@ T### [P?] [测试|实现|集成|文档] 简述
 
 > ⚠️ TDD：本阶段所有测试**应该失败**，因为对应实现尚未存在。先红后绿。
 
-### T010 [P] [测试] `LogSource.from_uri` 解析单元测试
+### T010 [P] [测试] `LogSource.parse` 解析单元测试
 - 关联：FR-1.1 日志源、plan §7.2、§13 风险表
 - 文件：`tests/test_utils_log_source.py`
 - 用例：
-  - `bash://wget -c http://example.com/x.zip` → `type=bash`，`command="wget -c http://example.com/x.zip"`
-  - `bash://  ping 1.1.1.1  ` → `command="ping 1.1.1.1"`（去前后空白）
-  - `file://C:\\data\\dl.log` → `type=file`，`path="C:\\data\\dl.log"`
-  - `file://D:\\app\\output\\logs` → 目录形式合法
-  - 缺 scheme（如 `wget ...`）→ 抛 `ValueError`
-  - 空命令 `bash://` → 抛 `ValueError`
-  - file 模式给相对路径 → 抛 `ValueError`
+  - `C:\\data\\dl.log` → `type=file`，`path="C:\\data\\dl.log"`，单文件
+  - `C:\\logs\\a.log;C:\\logs\\b.log` → `paths == ["C:\\logs\\a.log", "C:\\logs\\b.log"]`
+  - `file://C:\\data\\dl.log` → 前缀被剥离，与裸路径行为一致（兼容）
+  - `D:\\app\\output\\logs\\` → 抛 `ValueError`（目录不支持）
+  - `relative\\path\\log.txt` → 抛 `ValueError`（必须绝对路径）
+  - `bash://wget -c http://example.com` → 抛 `ValueError`（不支持的 scheme）
+  - 空输入 `""` 或 `file://` 单独 → 抛 `ValueError`
+  - `from_uri()` 仍可用（兼容别名）
 - 验收：`pytest tests/test_utils_log_source.py` 报 `ModuleNotFoundError`/`AttributeError`（红）
 
 ### T011 [P] [测试] `Task` / `TaskConfig` dataclass 边界测试
 - 关联：plan §7.1、§7.3
 - 文件：`tests/test_models_task.py`
 - 用例：
-  - 默认构造 `Task(alias="x", log_source=LogSource(type="bash", command="ls"))` 成功
+  - 默认构造 `Task(alias="x", log_source=LogSource(type="file", path="C:\\data\\dl.log"))` 成功
   - `created_at` 自动填充为带时区 UTC datetime
   - 别名含 `/`、空白、`\x00` → `Task.__post_init__` 抛 `ValueError`
   - 别名为中文 `"下载A"` → 通过
@@ -114,12 +115,12 @@ T### [P?] [测试|实现|集成|文档] 简述
 - 关联：FR-1.2 CLI、plan §9
 - 文件：`tests/test_cli_main.py`
 - 用例：
-  - `watch demo-bash log=bash://ping 1.1.1.1` → exit 0
-  - 重复 `watch demo-bash ...` → exit 2，stderr 含 `alias_exists`
-  - `list` 输出包含 `demo-bash` 与 `bash`
-  - `status demo-bash` 输出 JSON 格式且含 `"alias": "demo-bash"`
-  - `unwatch demo-bash` → exit 0
-  - `status demo-bash`（已注销） → exit 3
+  - `watch demo-file --log C:\\data\\demo.log` → exit 0
+  - 重复 `watch demo-file ...` → exit 2，stderr 含 `alias_exists`
+  - `list` 输出包含 `demo-file`
+  - `status demo-file` 输出 JSON 格式且含 `"alias": "demo-file"`
+  - `unwatch demo-file` → exit 0
+  - `status demo-file`（已注销） → exit 3
   - `status nonexistent` → exit 3
   - typer 缺参数 → exit 2，stderr 含 typer 标准错误
 - 备注：使用 `tmp_path` 与 monkeypatch 把 `data/` 重定向到测试目录
@@ -141,13 +142,13 @@ T### [P?] [测试|实现|集成|文档] 简述
 
 > 把 Phase 3.2 的红测变绿。本阶段**不要**改 typer / CLI / Tool 注册表。
 
-### T020 [P] [实现] `LogSource.from_uri` 解析器
+### T020 [P] [实现] `LogSource.parse` 解析器
 - 关联：T010、plan §7.2、§13
 - 文件：`SourceCode/taskguard/utils/log_source_uri.py`
 - 实现要点：
-  - 自写解析（不用 `urllib.parse`，因为 `bash://wget -c http://...` 嵌套）
-  - 用 `str.split("://", 1)` 一次分离 scheme 与 body
-  - file 模式调用 `pathlib.PureWindowsPath(p).is_absolute()` 校验
+  - 自写解析（不用 `urllib.parse`），便于剥离可选 `file://` 前缀并对 Windows 反斜杠路径友好
+  - 通过 `;` 拆分多文件、剥离前缀、逐个用 `pathlib.PureWindowsPath` 校验绝对路径
+  - 保留 `from_uri()` 作为兼容别名
 - 验收：T010 全绿；`mypy` 通过
 
 ### T021 [P] [实现] `models/task.py` 数据模型

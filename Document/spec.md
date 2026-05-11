@@ -28,9 +28,9 @@
 
 1. **注册信息**：每个任务需提供
    - 任务别名（唯一标识）
-   - PID（可选；提供则采集 CPU/内存，否则仅监控日志）
+   - PID（可选；提供则采集 CPU/内存。Bash 模式启动后自动获取子进程 pid，无需用户指定）
    - 日志源路径：支持两种模式
-     - **Bash 模式**：`bash://<命令>`，Agent 通过子进程执行命令并实时捕获 stdout/stderr 增量
+     - **Bash 模式**：`bash://<命令>`，Agent 通过子进程执行命令并实时捕获 stdout/stderr 增量；子进程启动后自动获取 pid，无需用户指定
      - **文件模式**：`file://<绝对路径>`，单文件或目录
        - 单文件：如 `file://C:\logs\download.log`
        - 目录：如 `file://D:\app\output\logs`，Agent 监控该目录下文本文件的新增内容（追踪最近修改的文件，按扩展名过滤如 `.txt`, `.log`）
@@ -39,11 +39,15 @@
    - **CLI 命令注册（主要入口）**：Agent 运行期间，通过本地命令行与 Agent 交互注册、注销、查询任务。
      ```bash
      # 注册任务
-     taskguard watch <别名> [pid=<PID>] log=<路径>
+     taskguard watch <别名> [--pid <PID>] [--log <URI>]
      # 例：
-     taskguard watch 下载A pid=12345 log=file://C:\data\dl.log
-     taskguard watch 服务B log=file://D:\logs\
-     taskguard watch 下载C log=bash://wget -c http://example.com/large.zip
+     taskguard watch 下载A --pid 12345 --log file://C:\data\dl.log
+     taskguard watch 服务B --log file://D:\logs\
+     taskguard watch 下载C --log bash://wget -c http://example.com/large.zip
+     taskguard watch 飞书 --pid 42816
+
+     # 修改已有任务
+     taskguard watch <别名> --revise [--pid <PID>] [--log <URI>]
 
      # 注销任务
      taskguard unwatch <别名>
@@ -57,10 +61,13 @@
    - **配置文件注册**：YAML 格式批量定义，Agent 启动时加载。适合部署时预定义监控任务。
    - **飞书对话框注册（扩展入口）**：Agent 接入飞书 Event Bot 后，支持通过飞书消息执行与 CLI 等价的命令。命令格式与 CLI 完全一致（去掉 `taskguard` 前缀）：
      ```
-     /watch <别名> [pid=<PID>] log=<路径>
+     /watch <别名> [--pid <PID>] [--log <URI>]
+     /watch <别名> --revise [--pid <PID>] [--log <URI>]
      /unwatch <别名>
      /list
      /status <别名>
+     /progress <别名>
+     /update
      ```
      飞书注册本质上是通过远程通道调用与 CLI 相同的 Tool Registry API，两者共享同一套命令解析和权限校验逻辑。
 
@@ -83,7 +90,7 @@
   - CPU 使用率（%）（通过两次采样计算）
   - 内存：工作集 (Working Set) / 私有内存 (Private Bytes) / 占系统物理内存百分比
   - 进程状态（运行/无响应/已退出）
-- **时间戳**：所有原始数据带精确时间戳，存入 SQLite 历史表。
+- **时间戳**：所有原始数据带精确时间戳（UTC），存入 SQLite 历史表。Shell 展示层统一转换为 CST (UTC+8) 北京时间显示。
 
 **存储策略**：
 - 原始日志增量（最近 24 小时全量保留，更早的按 1 小时聚合摘要后归档或删除）
@@ -129,11 +136,13 @@
 2. **基本指令支持**：
    | 命令 | 功能 | 示例 |
    |---|---|---|
-   | `/watch <别名> --log <uri>` | 注册监控任务 | `/watch 下载A --log bash://wget -c http://a.com/f.zip` |
+   | `/watch <别名> [--pid <PID>] [--log <uri>]` | 注册监控任务 | `/watch 下载A --log bash://wget -c http://a.com/f.zip` |
+   | `/watch <别名> --revise [--pid <PID>] [--log <uri>]` | 修改已有任务 | `/watch 下载A --revise --pid 67890` |
    | `/unwatch <别名>` | 注销监控任务 | `/unwatch 下载A` |
-   | `/list` | 列出所有任务 | `/list` |
+   | `/list` | 列出所有任务（含实时 pid 状态） | `/list` |
    | `/status <别名>` | 查询任务详情 | `/status 下载A` |
    | `/progress <别名>` | 查询最新进度（SQLite） | `/progress 下载A` |
+   | `/update` | 手动刷新，执行一次全量状态收集 | `/update` |
    | `/help` | 显示帮助 | `/help` |
    | `exit` | 退出 Agent | `exit` |
 
@@ -301,10 +310,12 @@
 
 | Tool | 功能 | 触发方式 |
 |---|---|---|
-| `watch_task` | 注册监控任务 | CLI `watch` / 飞书 `/watch` |
+| `watch_task` | 注册/修改监控任务（`--revise` 修改已有） | CLI `watch` / 飞书 `/watch` |
 | `unwatch_task` | 注销监控任务 | CLI `unwatch` / 飞书 `/unwatch` |
-| `list_tasks` | 列出所有任务 | CLI `list` / 飞书 `/list` |
-| `query_status` | 查询任务状态 | CLI `status` / 飞书 `/status` / 自然语言 |
+| `list_tasks` | 列出所有任务（含实时 pid 状态） | CLI `list` / 飞书 `/list` |
+| `query_status` | 查询任务详情（固定宽度 key-value 格式） | CLI `status` / 飞书 `/status` / 自然语言 |
+| `query_progress` | 查询最新进度（固定宽度 key-value 格式） | CLI `progress` / 飞书 `/progress` / 自然语言 |
+| `collect_all` | 手动刷新全量收集 | CLI `/update` / 飞书 `/update` / 自然语言 |
 | `query_history` | 查询历史异常 | 自然语言 |
 | `analyze_logs` | 分析日志内容 | 自然语言 / 定期触发 |
 
@@ -322,7 +333,7 @@
 
 | 采集器 | 核心机制 | 状态维护 |
 |---|---|---|
-| `BashCollector` | `asyncio.create_subprocess_shell` + `asyncio.Queue` 缓冲 | `asyncio.subprocess.Process` 实例 |
+| `BashCollector` | `asyncio.create_subprocess_shell` + `asyncio.Queue` 缓冲；启动后将子进程 pid 写入 `task.state["bash"]["pid"]` | `asyncio.subprocess.Process` 实例 |
 | `FileCollector` | 单文件：`seek(offset)` 增量读取；目录：扫描最近修改的匹配文件 | `file_offset` 存储在 task.state |
 | `ProcessCollector` | `psutil.Process(pid)` 两次采样计算 CPU | 无持久状态，每次采集重新查询 |
 
@@ -334,7 +345,7 @@
 |---|---|---|
 | `alias` | `str` | 唯一别名 |
 | `pid` | `int \| None` | 进程 PID（可选） |
-| `log_source` | `LogSource` | 日志源（bash/file） |
+| `log_source` | `LogSource \| None` | 日志源（bash/file），与 pid 至少提供一个 |
 | `created_at` | `datetime` | 创建时间 |
 | `state` | `dict` | 运行时状态（偏移量、上次进度等） |
 | `config` | `TaskConfig` | 任务级配置（阈值覆盖） |

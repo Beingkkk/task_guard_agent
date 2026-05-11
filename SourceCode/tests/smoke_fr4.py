@@ -7,10 +7,12 @@ Relates-to: FR-4
 
 import asyncio
 import json
+from unittest.mock import AsyncMock, MagicMock
 
 from taskguard.interaction.intent_parser import IntentParser
 from taskguard.interaction.parser import CommandParser, ParseError
 from taskguard.llm.base import BaseProvider, LLMResponse, Message, Usage
+from taskguard.tools.collect_all import CollectAllTool
 from taskguard.tools.help import HelpTool
 from taskguard.tools.query import QueryProgressTool
 
@@ -41,13 +43,26 @@ async def test_command_parser() -> None:
     assert cmd.params["pid"] == "12345"
     print("[OK] CommandParser /watch")
 
-    # 2. /list 解析
+    # 2. /watch --revise 解析
+    cmd = parser.parse("/watch 下载A --revise --log file://C:\\data\\new.log")
+    assert cmd.tool_name == "watch_task"
+    assert cmd.params["revise"] == "True"
+    assert cmd.params["log"] == "file://C:\\data\\new.log"
+    print("[OK] CommandParser /watch --revise")
+
+    # 3. /update 解析
+    cmd = parser.parse("/update")
+    assert cmd.tool_name == "collect_all"
+    assert cmd.params == {}
+    print("[OK] CommandParser /update")
+
+    # 4. /list 解析
     cmd = parser.parse("/list")
     assert cmd.tool_name == "list_tasks"
     assert cmd.params == {}
     print("[OK] CommandParser /list")
 
-    # 3. 未知命令
+    # 5. 未知命令
     try:
         parser.parse("/unknown")
         raise AssertionError("Should raise ParseError")
@@ -59,7 +74,7 @@ async def test_intent_parser() -> None:
     response = json.dumps(
         {
             "tool_name": "watch_task",
-            "params": {"alias": "下载B", "log": "file://C:\\\\data\\\\dl.log"},
+            "params": {"alias": "下载B", "log": "file://C:\\data\\dl.log"},
             "missing_params": [],
             "confidence": 0.95,
         }
@@ -97,11 +112,10 @@ async def test_tools() -> None:
     result = await help_tool.execute({})
     assert result.ok
     assert "/watch" in result.data
+    assert "/update" in result.data
     print("[OK] HelpTool")
 
     # QueryProgressTool (mock)
-    from unittest.mock import AsyncMock
-
     metrics = AsyncMock()
     metrics.query_progress = AsyncMock(
         return_value=[
@@ -119,6 +133,17 @@ async def test_tools() -> None:
     assert result.ok
     assert result.data["percentage"] == 68.0
     print("[OK] QueryProgressTool")
+
+    # CollectAllTool (mock)
+    harness = MagicMock()
+    harness.run_once = AsyncMock()
+    metrics_store = AsyncMock()
+    metrics_store.get_last_collect_time = AsyncMock(return_value=None)
+    collect_tool = CollectAllTool(harness, metrics_store)
+    result = await collect_tool.execute({})
+    assert result.ok
+    assert "last_collected" in result.data
+    print("[OK] CollectAllTool")
 
 
 async def main() -> None:

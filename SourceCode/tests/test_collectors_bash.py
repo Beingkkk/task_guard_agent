@@ -81,3 +81,16 @@ class TestBashCollector:
         collector = BashCollector()
         with pytest.raises(CollectionError):
             await collector.collect_logs(task)
+
+    async def test_stores_pid_in_task_state(self) -> None:
+        task = Task(
+            alias="test",
+            log_source=LogSource(type="bash", command="python -c 'print(1)'"),
+        )
+        collector = BashCollector()
+        await collector.collect_logs(task)
+        assert "bash" in task.state
+        assert "pid" in task.state["bash"]
+        assert isinstance(task.state["bash"]["pid"], int)
+        assert task.state["bash"]["pid"] > 0
+        await collector.close()

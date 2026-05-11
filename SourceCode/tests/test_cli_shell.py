@@ -127,3 +127,83 @@ class TestInteractiveShell:
         captured = capsys.readouterr()
         assert "/watch" in captured.out
         assert "/list" in captured.out
+
+    @pytest.mark.asyncio
+    async def test_update_command(self, mock_harness, mock_store, mock_metrics, capsys):
+        from taskguard.cli.shell import InteractiveShell
+
+        shell = InteractiveShell(mock_harness, mock_store, mock_metrics)
+
+        with (
+            patch("asyncio.to_thread", side_effect=["/update", "exit"]),
+            patch("taskguard.cli.shell.ToolRegistry") as mock_registry,
+        ):
+            mock_tool = AsyncMock()
+            mock_tool.execute = AsyncMock(
+                return_value=MagicMock(ok=True, data={"last_collected": "2026-05-10 14:30:00"})
+            )
+            mock_registry.get = MagicMock(return_value=mock_tool)
+            await shell.run()
+
+        captured = capsys.readouterr()
+        assert "Last collected" in captured.out
+
+    @pytest.mark.asyncio
+    async def test_status_output_format(self, mock_harness, mock_store, mock_metrics, capsys):
+        from taskguard.cli.shell import InteractiveShell
+
+        shell = InteractiveShell(mock_harness, mock_store, mock_metrics)
+
+        status_data = {
+            "alias": "demo",
+            "pid": 12345,
+            "created_at": "2026-05-10T12:00:00Z",
+            "source": "cli",
+            "log_source": {"type": "file", "path": "mock_task/log/test1.log"},
+            "config": {"collect_interval": 30},
+            "state": {},
+        }
+
+        with (
+            patch("asyncio.to_thread", side_effect=["/status demo", "exit"]),
+            patch("taskguard.cli.shell.ToolRegistry") as mock_registry,
+        ):
+            mock_tool = AsyncMock()
+            mock_tool.execute = AsyncMock(return_value=MagicMock(ok=True, data=status_data))
+            mock_registry.get = MagicMock(return_value=mock_tool)
+            await shell.run()
+
+        captured = capsys.readouterr()
+        # Fixed-width key-value format, not markdown table
+        assert "Task: demo" in captured.out
+        assert "alias" in captured.out
+        assert "pid" in captured.out
+        assert "|" not in captured.out  # No markdown table pipes
+
+    @pytest.mark.asyncio
+    async def test_progress_output_format(self, mock_harness, mock_store, mock_metrics, capsys):
+        from taskguard.cli.shell import InteractiveShell
+
+        shell = InteractiveShell(mock_harness, mock_store, mock_metrics)
+
+        progress_data = {
+            "alias": "demo",
+            "percentage": 45.2,
+            "speed": "3.5 MB/s",
+            "status": "normal",
+            "timestamp": "2026-05-10T12:00:00Z",
+        }
+
+        with (
+            patch("asyncio.to_thread", side_effect=["/progress demo", "exit"]),
+            patch("taskguard.cli.shell.ToolRegistry") as mock_registry,
+        ):
+            mock_tool = AsyncMock()
+            mock_tool.execute = AsyncMock(return_value=MagicMock(ok=True, data=progress_data))
+            mock_registry.get = MagicMock(return_value=mock_tool)
+            await shell.run()
+
+        captured = capsys.readouterr()
+        assert "Progress" in captured.out
+        assert "percentage" in captured.out
+        assert "|" not in captured.out  # No markdown table pipes

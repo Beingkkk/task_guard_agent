@@ -92,6 +92,59 @@ class TestAgentHarnessNormalPath:
 
         await harness._cleanup()
 
+    async def test_run_once_auto_populates_bash_pid(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        task = Task(alias="a", log_source=LogSource(type="bash", command="echo a"), pid=None)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+
+        async def mock_collect_logs(t: Task) -> list[str]:
+            # Simulate BashCollector writing pid to task.state
+            t.state.setdefault("bash", {})["pid"] = 12345
+            return []
+
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(side_effect=mock_collect_logs)
+        mock_collector.close = AsyncMock()
+        harness.register_collector("bash", mock_collector)
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(cpu_percent=5.0, status="running")),
+        ) as mock_process:
+            await harness.run_once()
+            # pid should be auto-populated from task.state["bash"]["pid"]
+            assert task.pid == 12345
+            mock_process.assert_awaited_once_with(12345)
+
+        await harness._cleanup()
+
+    async def test_run_once_leaves_file_pid_none(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        task = Task(alias="a", log_source=LogSource(type="file", path="/tmp/a.log"), pid=None)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=[])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=None),
+        ) as mock_process:
+            await harness.run_once()
+            assert task.pid is None
+            mock_process.assert_awaited_once_with(None)
+
+        await harness._cleanup()
+
 
 class TestExceptionIsolation:
     async def test_collection_error_isolated(

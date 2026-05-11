@@ -100,3 +100,51 @@ class TestWatchTaskTool:
         result = await tool.execute({"alias": "a"})
         assert result.ok is False
         assert result.error_code == "alias_managed_by_yaml"
+
+
+class TestWatchTaskToolRevise:
+    """T414: WatchTaskTool --revise mode."""
+
+    @pytest.mark.asyncio
+    async def test_revise_log_source(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        watch = WatchTaskTool(store)
+        await watch.execute({"alias": "demo", "log": "file://C:\\old.log", "pid": 12345})
+
+        result = await watch.execute(
+            {"alias": "demo", "revise": "True", "log": "file://C:\\new.log"}
+        )
+        assert result.ok is True
+        assert result.data.log_source.path == "C:\\new.log"
+        assert result.data.pid == 12345  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_revise_pid(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        watch = WatchTaskTool(store)
+        await watch.execute({"alias": "demo", "log": "file://C:\\a.log", "pid": 12345})
+
+        result = await watch.execute({"alias": "demo", "revise": "True", "pid": "67890"})
+        assert result.ok is True
+        assert result.data.pid == 67890
+        assert result.data.log_source.path == "C:\\a.log"  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_revise_alias_not_found(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        watch = WatchTaskTool(store)
+        result = await watch.execute(
+            {"alias": "nonexistent", "revise": "True", "log": "file://C:\\a.log"}
+        )
+        assert result.ok is False
+        assert result.error_code == "alias_not_found"
+
+    @pytest.mark.asyncio
+    async def test_revise_no_changes(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        watch = WatchTaskTool(store)
+        await watch.execute({"alias": "demo", "log": "file://C:\\a.log"})
+
+        result = await watch.execute({"alias": "demo", "revise": "True"})
+        assert result.ok is False
+        assert result.error_code == "no_changes"

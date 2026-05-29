@@ -91,7 +91,6 @@ class TestAgentHarnessNormalPath:
 
         await harness._cleanup()
 
-
     async def test_run_once_leaves_file_pid_none(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock
     ) -> None:
@@ -293,4 +292,56 @@ class TestAnalyzerInjection:
         # Both tasks should have save_snapshot called, only good has save_progress
         assert mock_metrics_store.save_snapshot.call_count == 2
         assert mock_metrics_store.save_progress.call_count == 1
+        await harness._cleanup()
+
+
+class TestEventPublisherInjection:
+    async def test_event_publisher_called_after_collection(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """event_publisher is called after each task collection."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line1", "line2"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_publisher = MagicMock()
+        mock_publisher.publish = AsyncMock()
+        harness.event_publisher = mock_publisher
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(cpu_percent=10.0, status="running")),
+        ):
+            await harness.run_once()
+
+        mock_publisher.publish.assert_awaited_once()
+        call_args = mock_publisher.publish.call_args
+        assert call_args[0][0] == "task.updated"
+        assert call_args[0][1]["alias"] == "a"
+        assert "timestamp" in call_args[0][1]
+        assert "log_lines" in call_args[0][1]
+        await harness._cleanup()
+
+    async def test_event_publisher_none_no_error(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """event_publisher=None does not raise."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=[])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        harness.event_publisher = None
+
+        await harness.run_once()  # should not raise
         await harness._cleanup()

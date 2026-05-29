@@ -32,10 +32,11 @@ class AgentHarness:
         self._running = False
         self._collectors: dict[str, BaseCollector] = {}
         self._process_collector = ProcessCollector()
-        # Injection points for FR-3/4/5
+        # Injection points for FR-3/4/5/6
         self.analyzer: Any = None
         self.alerter: Any = None
         self.crash_handler: Any = None
+        self.event_publisher: Any = None
 
     def register_collector(self, source_type: str, collector: BaseCollector) -> None:
         """Register a collector for a given source type."""
@@ -112,6 +113,35 @@ class AgentHarness:
         # Injection point-3: alerter
         if self.alerter is not None:
             snapshot.alerts = await self.alerter.evaluate(task, snapshot)
+
+        # Injection point-4: event publisher
+        if self.event_publisher is not None:
+            try:
+                event_data: dict[str, Any] = {
+                    "alias": task.alias,
+                    "timestamp": snapshot.timestamp.isoformat(),
+                    "log_lines": snapshot.log_lines,
+                }
+                if snapshot.process is not None:
+                    event_data["metrics"] = {
+                        "cpu_percent": snapshot.process.cpu_percent,
+                        "memory_working_set": snapshot.process.memory_working_set,
+                        "status": snapshot.process.status,
+                        "exit_code": snapshot.process.exit_code,
+                    }
+                if snapshot.progress is not None:
+                    event_data["progress"] = {
+                        "percentage": snapshot.progress.percentage,
+                        "speed": snapshot.progress.speed,
+                        "eta": snapshot.progress.eta,
+                        "status": snapshot.progress.status,
+                        "raw_summary": snapshot.progress.raw_summary,
+                        "confidence": snapshot.progress.confidence,
+                        "extracted_by": snapshot.progress.extracted_by,
+                    }
+                await self.event_publisher.publish("task.updated", event_data)
+            except Exception:
+                logger.exception("Event publication failed for %s", task.alias)
 
     async def _cleanup(self) -> None:
         """Close all collectors and the metrics store."""

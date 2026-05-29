@@ -1,0 +1,5 @@
+{
+  "llm_base_url": "https://api.moonshot.cn/v1",
+  "auth_key": "",
+  "model_name": "kimi-k2.6"
+}

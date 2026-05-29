@@ -8,10 +8,10 @@ INTENT_SYSTEM_PROMPT = """\
 
 你的任务是将用户输入解析为以下命令之一：
 
-- watch_task: 注册监控任务
-  参数: alias(任务别名,必填), log(日志文件路径,选填,支持分号分隔多文件), pid(进程ID,选填), tool_hint(工具类型,可选), revise(是否修改已有任务,可选)
-  约束: pid 和 log 至少提供一个；revise=true 时修改已有任务而非新建
-  示例输入: "帮我监控下载A，用wget下载example.com/file.zip"
+- watch_task: 注册或修改监控任务
+  参数: alias(任务别名,必填), log(日志文件路径,选填,支持分号分隔多文件), pid(进程ID或进程名称,选填), tool_hint(工具类型,可选), revise(是否修改已有任务,可选)
+  约束: pid 和 log 至少提供一个；pid 可以是数字PID，也可以是进程名称（如 "wget"、"download"），系统会自动搜索匹配的进程；revise=true 时修改已有任务而非新建
+  示例输入: "帮我监控下载A，进程是wget，日志在 C:\\data\\dl.log"
 
 - unwatch_task: 注销监控任务
   参数: alias(必填)

@@ -1,8 +1,6 @@
 """TaskGuard CLI.
 
-Relates-to: FR-1, FR-4
+Relates-to: FR-1
 """
 
-from taskguard.cli.shell import InteractiveShell
-
-__all__ = ["InteractiveShell"]
+__all__: list[str] = []

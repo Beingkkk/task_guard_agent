@@ -21,27 +21,15 @@ app = typer.Typer(name="taskguard", help="进程守护与智能监控 Agent", no
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
-    """CLI entry point. Enter interactive shell when no subcommand is given."""
+    """CLI entry point. Launch GUI when no subcommand is given."""
     if ctx.invoked_subcommand is None:
-        asyncio.run(_enter_shell())
+        typer.echo("GUI mode is not yet implemented. Use subcommands or start the API server.")
+        raise typer.Exit(code=1)
 
 
 def _data_dir() -> Path:
     raw = os.environ.get("TASKGUARD_DATA_DIR", "./data")
     return Path(raw).resolve()
-
-
-async def _enter_shell() -> None:
-    """Enter interactive shell with full agent environment."""
-    from pathlib import Path
-
-    from taskguard.cli.shell import InteractiveShell
-
-    data = _data_dir()
-    data.mkdir(parents=True, exist_ok=True)
-
-    shell = await InteractiveShell.from_config(Path("config"), data)
-    await shell.run()
 
 
 def _format_list(tasks: list[dict[str, Any]]) -> str:
@@ -85,7 +73,9 @@ def _handle_result(
 @app.command()
 def watch(
     alias: Annotated[str, typer.Argument(help="任务别名")],
-    log: Annotated[str, typer.Option(help="日志文件路径（C:\\data\\dl.log 或多文件 C:\\a.log;C:\\b.log）")],
+    log: Annotated[
+        str, typer.Option(help="日志文件路径（C:\\data\\dl.log 或多文件 C:\\a.log;C:\\b.log）")
+    ],
     pid: Annotated[int | None, typer.Option(help="进程 PID")] = None,
     tool: Annotated[str | None, typer.Option(help="显式标注工具类型（如 wget, rsync）")] = None,
 ) -> None:

@@ -145,14 +145,13 @@ agent:
   collect_interval: 30          # 采集间隔（秒）
 
 llm:
-  provider: "claude"            # claude / openai
   min_interval: 60              # LLM 调用最小间隔（秒）
 
 alerts:
   default_cooldown: 300         # 告警冷却（秒）
 ```
 
-LLM API 密钥配置在 `config/config-claude.json` 或 `config/config-openai.json` 中。
+LLM API 密钥配置在 `config/config-claude.json` 中。
 
 ## 许可证
 

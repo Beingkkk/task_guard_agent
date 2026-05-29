@@ -101,7 +101,6 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
     try:
         provider = create_provider(
             LLMConfig(
-                provider=cfg.llm.provider,
                 model=cfg.llm.model,
                 api_key=cfg.llm.api_key,
                 base_url=cfg.llm.base_url,

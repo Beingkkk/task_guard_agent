@@ -14,7 +14,6 @@ from taskguard.llm.base import (
 )
 from taskguard.llm.claude_provider import ClaudeProvider
 from taskguard.llm.factory import LLMConfig, create_provider
-from taskguard.llm.openai_provider import OpenAIProvider
 
 __all__ = [
     "BaseProvider",
@@ -23,7 +22,6 @@ __all__ = [
     "LLMError",
     "LLMResponse",
     "Message",
-    "OpenAIProvider",
     "ToolCall",
     "ToolDefinition",
     "Usage",

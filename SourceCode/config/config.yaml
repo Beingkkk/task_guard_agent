@@ -1,0 +1,10 @@
+agent:
+  name: "TaskGuard"
+  collect_interval: 30
+  data_dir: "./data"
+
+llm:
+  model: ""
+  min_interval: 60
+  max_log_lines: 50
+  regex_threshold: 0.6

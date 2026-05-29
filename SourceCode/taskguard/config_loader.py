@@ -14,7 +14,6 @@ import yaml
 class LLMConfig:
     """LLM provider configuration."""
 
-    provider: str = "claude"
     model: str = ""
     api_key: str = ""
     base_url: str | None = None
@@ -34,12 +33,7 @@ class AppConfig:
 
 
 class ConfigLoader:
-    """Loads and merges config.yaml and config-{provider}.json.
-
-    ``llm.provider`` in config.yaml selects the JSON file:
-    - ``"claude"`` (default) → ``config-claude.json``
-    - ``"openai"`` → ``config-openai.json``
-    """
+    """Loads and merges config.yaml and config-claude.json."""
 
     @classmethod
     def load(cls, config_dir: Path) -> AppConfig:
@@ -52,27 +46,24 @@ class ConfigLoader:
             raw = yaml.safe_load(f) or {}
 
         llm_cfg = raw.get("llm", {})
-        provider = llm_cfg.get("provider", "claude")
 
-        # Select JSON config based on provider (default: claude)
-        json_name = "config-claude.json" if provider == "claude" else "config-openai.json"
-        llm_path = config_dir / json_name
+        # Always load config-claude.json (only provider supported)
+        claude_path = config_dir / "config-claude.json"
 
-        if not llm_path.exists():
-            raise FileNotFoundError(f"LLM config file not found: {llm_path}")
+        if not claude_path.exists():
+            raise FileNotFoundError(f"LLM config file not found: {claude_path}")
 
-        with open(llm_path, encoding="utf-8") as f:
-            llm_raw = json.load(f)
+        with open(claude_path, encoding="utf-8") as f:
+            claude_raw = json.load(f)
 
         # Merge rules: yaml overrides json for model name
         # api_key and base_url come from json only
-        model_name = llm_cfg.get("model", llm_raw.get("model_name", ""))
+        model_name = llm_cfg.get("model", claude_raw.get("model_name", ""))
 
         llm = LLMConfig(
-            provider=provider,
             model=model_name,
-            api_key=llm_raw.get("auth_key", ""),
-            base_url=llm_raw.get("llm_base_url"),
+            api_key=claude_raw.get("auth_key", ""),
+            base_url=claude_raw.get("llm_base_url"),
             min_interval=llm_cfg.get("min_interval", 60),
             max_log_lines=llm_cfg.get("max_log_lines", 50),
             regex_threshold=llm_cfg.get("regex_threshold", 0.6),

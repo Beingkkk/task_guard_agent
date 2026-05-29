@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskGuard 架构依赖与 FR 映射关系图</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --border: #30363d;
+            --accent: #58a6ff;
+            --accent-dim: #1f6feb;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+            --info: #56d4dd;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 2rem;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 0.5rem 1.2rem;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .nav-tab:hover, .nav-tab.active {
+            background: var(--accent-dim);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .section {
+            margin-bottom: 3rem;
+            scroll-margin-top: 140px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .section-header h2 {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        .section-header .badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-done {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        .badge-todo {
+            background: rgba(248, 81, 73, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+
+        .badge-wip {
+            background: rgba(210, 153, 34, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+        }
+
+        .diagram-wrapper {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin-bottom: 1.5rem;
+        }
+
+        .diagram-wrapper h3 {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            min-height: 200px;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+
+        .legend-arrow {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .info-box {
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--accent);
+            padding: 1rem 1.2rem;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-box p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .info-box strong {
+            color: var(--text-primary);
+        }
+
+        .fr-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+
+        .fr-table th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .fr-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .fr-table tr:hover td {
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-right: 0.3rem;
+        }
+
+        .tag-fr1 { background: rgba(137, 87, 255, 0.2); color: #a371f7; }
+        .tag-fr2 { background: rgba(47, 129, 247, 0.2); color: #58a6ff; }
+        .tag-fr3 { background: rgba(35, 197, 94, 0.2); color: #3fb950; }
+        .tag-fr4 { background: rgba(210, 153, 34, 0.2); color: #d29922; }
+        .tag-fr5 { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+        .tag-fr6 { background: rgba(139, 148, 158, 0.2); color: #8b949e; }
+        .tag-fr7 { background: rgba(139, 148, 158, 0.2); color: #8b949e; }
+        .tag-fr8 { background: rgba(139, 148, 158, 0.2); color: #8b949e; }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+
+        /* Mermaid theme overrides for dark mode */
+        .node rect, .node circle, .node ellipse, .node polygon {
+            stroke-width: 2px !important;
+        }
+        .edgePath path {
+            stroke-width: 2px !important;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>TaskGuard 架构全景图</h1>
+        <p>模块依赖关系 · 功能需求映射 · 分层架构可视化</p>
+        <div class="nav-tabs">
+            <a href="#dependency" class="nav-tab active" onclick="setActive(this)">模块依赖图</a>
+            <a href="#fr-mapping" class="nav-tab" onclick="setActive(this)">FR 功能映射</a>
+            <a href="#fr-status" class="nav-tab" onclick="setActive(this)">FR 进度总览</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- ============ 图1：模块依赖关系图 ============ -->
+        <div class="section" id="dependency">
+            <div class="section-header">
+                <h2>模块依赖关系图</h2>
+                <span class="badge badge-done">架构基线</span>
+            </div>
+
+            <div class="info-box">
+                <p><strong>设计原则：</strong>上层可调用下层，下层不可调用上层。箭头方向表示 <code>import</code> / 调用关系。
+                <strong>Tool Registry</strong> 是中心枢纽，所有输入通道（CLI、Shell、飞书）解析后统一调用 Tool。</p>
+            </div>
+
+            <div class="diagram-wrapper">
+                <h3>包级别依赖流向</h3>
+                <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#21262d', 'primaryTextColor': '#e6edf3', 'primaryBorderColor': '#30363d', 'lineColor': '#8b949e', 'secondaryColor': '#161b22', 'tertiaryColor': '#0d1117', 'fontFamily': '-apple-system, BlinkMacSystemFont, sans-serif'}}}%%
+graph TD
+    subgraph Interface["🖥️ 交互层 (Interface)"]
+        direction TB
+        CLI["cli/main.py<br/>typer 单命令入口"]
+        SHELL["cli/shell.py<br/>InteractiveShell REPL"]
+        FEISHU["feishu/<br/>(FR-8 占位)"]
+    end
+
+    subgraph Interaction["🔄 交互解析层 (Interaction)"]
+        direction TB
+        CP["parser.py<br/>CommandParser"]
+        IP["intent_parser.py<br/>IntentParser"]
+        PROMPT["prompts.py<br/>System Prompts"]
+    end
+
+    subgraph Tools["🔧 工具层 (Tools) — 中心枢纽"]
+        direction TB
+        TBASE["base.py<br/>ToolRegistry + BaseTool"]
+        TWATCH["watch.py<br/>Watch/Unwatch"]
+        TQUERY["query.py<br/>List/QueryStatus"]
+        TCLEAN["cleanup.py<br/>CleanupExited"]
+        TEXEC["exec_bash.py<br/>ExecBash"]
+        TFIND["find_process.py<br/>FindProcess"]
+        THELP["help.py<br/>Help"]
+        TCOLL["collect_all.py<br/>CollectAll"]
+    end
+
+    subgraph Orchestrator["⚙️ 调度层 (Orchestrator)"]
+        direction TB
+        HARNESS["agent.py<br/>AgentHarness"]
+    end
+
+    subgraph Capability["🧠 能力层 (Capability)"]
+        direction TB
+        LLM["llm/<br/>Provider 抽象层"]
+        CFG["config_loader.py<br/>ConfigLoader"]
+        ALERT["alerters/<br/>(FR-5 占位)"]
+    end
+
+    subgraph Analyzer["📊 分析器 (Analyzer)"]
+        direction TB
+        PIPE["pipeline.py<br/>AnalyzerPipeline"]
+        REGEX["regex_extractor.py<br/>RegexExtractor"]
+        RTMPL["regex/<br/>wget/rsync/aria2/curl"]
+    end
+
+    subgraph Collector["📡 采集层 (Collector)"]
+        direction TB
+        FCOLL["file_collector.py<br/>FileCollector"]
+        PCOLL["process_collector.py<br/>ProcessCollector"]
+        CBASE["collectors/base.py<br/>BaseCollector"]
+    end
+
+    subgraph Data["💾 数据层 (Data)"]
+        direction TB
+        STORE["storage/task_store.py<br/>TaskStore (JSON)"]
+        METRIC["storage/metrics_store.py<br/>MetricsStore (SQLite)"]
+    end
+
+    subgraph Models["📋 模型层 (Models)"]
+        direction TB
+        MTASK["models/task.py<br/>Task/LogSource"]
+        MSNP["models/snapshot.py<br/>Snapshot/ProgressInfo"]
+        MERR["models/errors.py<br/>异常定义"]
+    end
+
+    subgraph Utils["🔩 工具类 (Utils)"]
+        URI["utils/log_source_uri.py<br/>LogSource URI 解析"]
+    end
+
+    %% === 交互层 → 解析层 ===
+    CLI -->|"调用"| CP
+    SHELL -->|"调用"| CP
+    SHELL -->|"调用"| IP
+    FEISHU -.->|"调用 (FR-8)"| CP
+    FEISHU -.->|"调用 (FR-8)"| IP
+    IP -->|"复用"| LLM
+    IP -->|"复用"| PROMPT
+
+    %% === 交互层 → 工具层 ===
+    CLI -->|"调用"| TBASE
+    SHELL -->|"调用"| TBASE
+
+    %% === 工具层 → 调度层 ===
+    TCOLL -->|"run_once()"| HARNESS
+    TWATCH -->|"修改任务状态"| HARNESS
+
+    %% === 工具层 → 数据层 ===
+    TWATCH -->|"读写"| STORE
+    TQUERY -->|"查询"| STORE
+    TQUERY -->|"查询"| METRIC
+    TCLEAN -->|"修改"| STORE
+
+    %% === 工具层 → 能力层 ===
+    TEXEC -->|"运行诊断"| TFIND
+
+    %% === 调度层 → 采集层 ===
+    HARNESS -->|"register_collector"| FCOLL
+    HARNESS -->|"register_collector"| PCOLL
+    HARNESS -->|"collect_logs"| FCOLL
+    HARNESS -->|"collect"| PCOLL
+
+    %% === 调度层 → 分析器（注入点） ===
+    HARNESS -.->|"注入 analyzer"| PIPE
+
+    %% === 调度层 → 能力层（注入点） ===
+    HARNESS -.->|"注入 alerter (FR-5)"| ALERT
+
+    %% === 分析器内部 ===
+    PIPE -->|"优先"| REGEX
+    REGEX -->|"匹配"| RTMPL
+    PIPE -->|"fallback"| LLM
+
+    %% === 采集层 → 模型层 ===
+    FCOLL -->|"使用"| MTASK
+    PCOLL -->|"构建"| MSNP
+
+    %% === 调度层 → 数据层 ===
+    HARNESS -->|"save_snapshot"| METRIC
+
+    %% === 工具层 → 模型层 ===
+    TBASE -->|"返回"| MERR
+    TWATCH -->|"构建"| MTASK
+    TWATCH -->|"使用"| URI
+
+    %% === 数据层 → 模型层 ===
+    STORE -->|"序列化"| MTASK
+    METRIC -->|"序列化"| MSNP
+
+    %% === 能力层内部 ===
+    LLM -->|"配置"| CFG
+    SHELL -->|"初始化"| CFG
+    SHELL -->|"创建"| LLM
+    SHELL -.->|"创建并注入"| PIPE
+
+    %% === 样式 ===
+    style Interface fill:#1a1f2e,stroke:#58a6ff,stroke-width:3px
+    style Tools fill:#1a2e1a,stroke:#3fb950,stroke-width:3px
+    style Orchestrator fill:#2e1a1a,stroke:#d29922,stroke-width:3px
+    style Capability fill:#1a2e2e,stroke:#56d4dd,stroke-width:3px
+    style Analyzer fill:#1a1a2e,stroke:#a371f7,stroke-width:3px
+    style Collector fill:#2e2a1a,stroke:#d29922,stroke-width:2px
+    style Data fill:#2e1a2e,stroke:#f85149,stroke-width:2px
+    style Models fill:#1f1f1f,stroke:#8b949e,stroke-width:2px
+    style Utils fill:#1f1f1f,stroke:#8b949e,stroke-width:1px
+
+    style TBASE fill:#0d3b0d,stroke:#3fb950,stroke-width:3px
+    style HARNESS fill:#3b1f0d,stroke:#d29922,stroke-width:3px
+                </div>
+            </div>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#58a6ff"></div>
+                    <span>交互层 — 用户输入入口</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#3fb950"></div>
+                    <span>工具层 — 中心枢纽（所有输入统一收敛至此）</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#d29922"></div>
+                    <span>调度层 — AgentHarness 定时驱动</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#56d4dd"></div>
+                    <span>能力层 — LLM / 配置 / 告警</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#a371f7"></div>
+                    <span>分析器 — 正则 + LLM 进度提取</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#d29922;opacity:0.7"></div>
+                    <span>采集层 — 文件/进程数据获取</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#f85149"></div>
+                    <span>数据层 — 持久化存储</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-arrow">━━━▶</span>
+                    <span>箭头 = import / 调用关系</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ 图2：模块/功能 → FR 映射关系图 ============ -->
+        <div class="section" id="fr-mapping">
+            <div class="section-header">
+                <h2>模块/功能 → FR 需求映射关系图</h2>
+                <span class="badge badge-done">需求追溯</span>
+            </div>
+
+            <div class="info-box">
+                <p><strong>阅读方式：</strong>左侧为功能模块，右侧为 FR 需求。连线标注该模块对 FR 的贡献方式。
+                FR 之间的虚线表示<strong>前置依赖</strong>关系（箭头指向被依赖的 FR）。</p>
+            </div>
+
+            <div class="diagram-wrapper">
+                <h3>功能模块 → FR 映射</h3>
+                <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#21262d', 'primaryTextColor': '#e6edf3', 'primaryBorderColor': '#30363d', 'lineColor': '#8b949e', 'secondaryColor': '#161b22', 'tertiaryColor': '#0d1117', 'fontFamily': '-apple-system, BlinkMacSystemFont, sans-serif'}}}%%
+graph LR
+    subgraph Modules["📦 功能模块"]
+        direction TB
+
+        subgraph M_FR1["FR-1 模块"]
+            M1A["Task / LogSource<br/>TaskConfig"]
+            M1B["TaskStore<br/>JSON 原子写"]
+            M1C["ToolRegistry<br/>watch/unwatch/list"]
+            M1D["CLI main.py<br/>typer 命令"]
+        end
+
+        subgraph M_FR2["FR-2 模块"]
+            M2A["FileCollector<br/>seek 增量"]
+            M2B["ProcessCollector<br/>psutil"]
+            M2C["MetricsStore<br/>SQLite"]
+            M2D["AgentHarness<br/>定时循环"]
+            M2E["Snapshot<br/>ProcessInfo"]
+        end
+
+        subgraph M_FR3["FR-3 模块"]
+            M3A["RegexExtractor<br/>模板库"]
+            M3B["AnalyzerPipeline<br/>正则→LLM"]
+            M3C["Provider 层<br/>Claude/OpenAI"]
+            M3D["ConfigLoader<br/>配置读取"]
+        end
+
+        subgraph M_FR4["FR-4 模块"]
+            M4A["InteractiveShell<br/>REPL"]
+            M4B["CommandParser<br/>命令解析"]
+            M4C["IntentParser<br/>自然语言"]
+            M4D["QueryStatusTool<br/>综合查询"]
+        end
+
+        subgraph M_Future["FR-5/6/7/8 占位模块"]
+            M5A["alerters/<br/>告警引擎"]
+            M6A["crash_dumps/<br/>现场留存"]
+            M8A["feishu/<br/>飞书 Bot"]
+        end
+    end
+
+    subgraph FRs["📋 功能需求 (FR)"]
+        direction TB
+
+        FR1["FR-1<br/>任务注册与管理<br/><span style='font-size:11px'>✅ Complete</span>"]
+        FR2["FR-2<br/>周期性数据采集<br/><span style='font-size:11px'>✅ Complete</span>"]
+        FR3["FR-3<br/>智能进度提取<br/><span style='font-size:11px'>✅ Complete</span>"]
+        FR4["FR-4<br/>用户体验与交互<br/><span style='font-size:11px'>✅ Complete</span>"]
+        FR5["FR-5<br/>告警与异常检测<br/><span style='font-size:11px'>⬜ Not Started</span>"]
+        FR6["FR-6<br/>OOM/崩溃现场留存<br/><span style='font-size:11px'>⬜ Not Started</span>"]
+        FR7["FR-7<br/>自然语言查询<br/><span style='font-size:11px'>⬜ Not Started</span>"]
+        FR8["FR-8<br/>飞书 Bot 接入<br/><span style='font-size:11px'>⬜ Not Started</span>"]
+    end
+
+    %% === FR-1 映射 ===
+    M1A -->|"数据模型"| FR1
+    M1B -->|"持久化"| FR1
+    M1C -->|"核心 Tools"| FR1
+    M1D -->|"CLI 入口"| FR1
+
+    %% === FR-2 映射 ===
+    M2A -->|"日志增量采集"| FR2
+    M2B -->|"进程指标采集"| FR2
+    M2C -->|"时序存储"| FR2
+    M2D -->|"调度循环"| FR2
+    M2E -->|"数据模型"| FR2
+
+    %% === FR-3 映射 ===
+    M3A -->|"正则模板"| FR3
+    M3B -->|"分析管道"| FR3
+    M3C -->|"LLM 调用"| FR3
+    M3D -->|"配置加载"| FR3
+    M2A -->|"提供日志输入"| FR3
+    M2C -->|"progress/llm_usage 表"| FR3
+
+    %% === FR-4 映射 ===
+    M4A -->|"交互式 Shell"| FR4
+    M4B -->|"/ 命令解析"| FR4
+    M4C -->|"自然语言意图"| FR4
+    M4D -->|"综合状态查询"| FR4
+    M1C -->|"复用 ToolRegistry"| FR4
+    M2D -->|"后台运行 Harness"| FR4
+    M3C -->|"复用 Provider"| FR4
+
+    %% === FR-5/6/7/8 映射 ===
+    M5A -->|"告警规则+降噪"| FR5
+    M2D -->|"alerter 注入点"| FR5
+    M2E -->|"异常检测数据源"| FR5
+    M6A -->|"现场文件留存"| FR6
+    M2D -->|"crash_handler 注入点"| FR6
+    M3C -->|"复用 Provider<br/>生成回复"| FR7
+    M2C -->|"查询 SQLite"| FR7
+    M8A -->|"Webhook/Event Bot"| FR8
+    M1C -->|"复用 ToolRegistry<br/>命令解析"| FR8
+    M4B -->|"复用 CommandParser"| FR8
+
+    %% === FR 前置依赖 ===
+    FR2 -.->|"依赖"| FR1
+    FR3 -.->|"依赖"| FR2
+    FR4 -.->|"依赖"| FR1
+    FR4 -.->|"依赖"| FR2
+    FR4 -.->|"依赖"| FR3
+    FR5 -.->|"依赖"| FR2
+    FR5 -.->|"依赖"| FR3
+    FR6 -.->|"依赖"| FR2
+    FR6 -.->|"依赖"| FR5
+    FR7 -.->|"依赖"| FR3
+    FR7 -.->|"依赖"| FR4
+    FR8 -.->|"依赖"| FR4
+    FR8 -.->|"依赖"| FR5
+
+    %% === 样式 ===
+    style FR1 fill:#1a0d3b,stroke:#a371f7,stroke-width:3px
+    style FR2 fill:#0d1a3b,stroke:#58a6ff,stroke-width:3px
+    style FR3 fill:#0d3b1a,stroke:#3fb950,stroke-width:3px
+    style FR4 fill:#3b2a0d,stroke:#d29922,stroke-width:3px
+    style FR5 fill:#3b0d0d,stroke:#f85149,stroke-width:2px
+    style FR6 fill:#3b0d0d,stroke:#f85149,stroke-width:2px
+    style FR7 fill:#2a2a2a,stroke:#8b949e,stroke-width:1px
+    style FR8 fill:#2a2a2a,stroke:#8b949e,stroke-width:1px
+
+    style M_FR1 fill:#1a0d3b11,stroke:#a371f7,stroke-width:1px,stroke-dasharray: 5 5
+    style M_FR2 fill:#0d1a3b11,stroke:#58a6ff,stroke-width:1px,stroke-dasharray: 5 5
+    style M_FR3 fill:#0d3b1a11,stroke:#3fb950,stroke-width:1px,stroke-dasharray: 5 5
+    style M_FR4 fill:#3b2a0d11,stroke:#d29922,stroke-width:1px,stroke-dasharray: 5 5
+    style M_Future fill:#3b0d0d11,stroke:#f85149,stroke-width:1px,stroke-dasharray: 5 5
+                </div>
+            </div>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <span class="legend-arrow">━━━▶</span>
+                    <span>实线 = 模块贡献/支撑 FR</span>
+                </div>
+                <div class="legend-item">
+                    <span style="color:#8b949e;font-size:1.2rem">- - - ▶</span>
+                    <span>虚线 = FR 前置依赖</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#a371f7"></div>
+                    <span>FR-1 任务注册</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#58a6ff"></div>
+                    <span>FR-2 数据采集</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#3fb950"></div>
+                    <span>FR-3 进度提取</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#d29922"></div>
+                    <span>FR-4 交互层</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background:#f85149"></div>
+                    <span>FR-5/6 告警/崩溃</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ FR 进度总览表 ============ -->
+        <div class="section" id="fr-status">
+            <div class="section-header">
+                <h2>FR 进度总览</h2>
+                <span class="badge badge-done">实时状态</span>
+            </div>
+
+            <div class="info-box">
+                <p>共 8 个 FR，其中 <strong style="color:#3fb950">4 个已完成</strong>（FR-1~4），<strong style="color:#f85149">4 个待开发</strong>（FR-5~8）。
+                已完成 FR 对应 <strong>46 个 Python 源文件</strong>、<strong>25 个测试文件</strong>。</p>
+            </div>
+
+            <table class="fr-table">
+                <thead>
+                    <tr>
+                        <th>FR</th>
+                        <th>名称</th>
+                        <th>状态</th>
+                        <th>核心模块</th>
+                        <th>测试文件</th>
+                        <th>前置 FR</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="tag tag-fr1">FR-1</span></td>
+                        <td>任务注册与管理</td>
+                        <td><span style="color:#3fb950">✅ Complete</span></td>
+                        <td><code>models/task.py</code>, <code>storage/task_store.py</code>, <code>tools/watch.py</code>, <code>tools/query.py</code>, <code>tools/base.py</code>, <code>cli/main.py</code></td>
+                        <td><code>test_models_task.py</code>, <code>test_storage_task_store.py</code>, <code>test_tools_watch.py</code>, <code>test_tools_query.py</code>, <code>test_utils_log_source.py</code></td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><span class="tag tag-fr2">FR-2</span></td>
+                        <td>周期性数据采集</td>
+                        <td><span style="color:#3fb950">✅ Complete</span></td>
+                        <td><code>agent.py</code>, <code>collectors/file_collector.py</code>, <code>collectors/process_collector.py</code>, <code>storage/metrics_store.py</code>, <code>models/snapshot.py</code></td>
+                        <td><code>test_models_snapshot.py</code>, <code>test_collectors_file.py</code>, <code>test_collectors_process.py</code>, <code>test_storage_metrics.py</code>, <code>test_agent_loop.py</code></td>
+                        <td>FR-1</td>
+                    </tr>
+                    <tr>
+                        <td><span class="tag tag-fr3">FR-3</span></td>
+                        <td>智能进度提取</td>
+                        <td><span style="color:#3fb950">✅ Complete</span></td>
+                        <td><code>analyzers/pipeline.py</code>, <code>analyzers/regex_extractor.py</code>, <code>analyzers/regex/*.py</code>, <code>llm/*.py</code>, <code>config_loader.py</code></td>
+                        <td><code>test_models_progress.py</code>, <code>test_analyzers_pipeline.py</code>, <code>test_analyzers_regex.py</code>, <code>test_llm_*.py</code>, <code>test_config_loader.py</code>, <code>test_storage_progress.py</code></td>
+                        <td>FR-2</td>
+                    </tr>
+                    <tr>
+                        <td><span class="tag tag-fr4">FR-4</span></td>
+                        <td>用户体验与交互层</td>
+                        <td><span style="color:#3fb950">✅ Complete</span></td>
+                        <td><code>cli/shell.py</code>, <code>interaction/parser.py</code>, <code>interaction/intent_parser.py</code>, <code>interaction/prompts.py</code>, <code>tools/collect_all.py</code>, <code>tools/cleanup.py</code>, <code>tools/exec_bash.py</code>, <code>tools/find_process.py</code>, <code>tools/help.py</code></td>
+                        <td><code>test_cli_shell.py</code>, <code>test_cli_main.py</code>, <code>test_interaction_parser.py</code>, <code>test_interaction_intent.py</code>, <code>test_tools_help.py</code>, <code>test_tools_find_process.py</code></td>
+                        <td>FR-1, FR-2, FR-3</td>
+                    </tr>
+                    <tr>
+                        <td><span class="tag tag-fr5">FR-5</span></td>
+                        <td>告警与异常检测</td>
+                        <td><span style="color:#f85149">⬜ Not Started</span></td>
+                        <td><code>alerters/*.py</code>（占位）</td>
+                        <td>—</td>
+                        <td>FR-2, FR-3</td>
+                    </tr>
+                    <tr>
+                        <td><span class="tag tag-fr6">FR-6</span></td>
+                        <td>OOM/崩溃现场留存</td>
+                        <td><span style="color:#f85149">⬜ Not Started</span></td>
+                        <td><code>crash_dumps/</code>（目录占位）</td>
+                        <td>—</td>
+                        <td>FR-2, FR-5</td>
+                    </tr>
+                    <tr>
+                        <td><span class="tag tag-fr7">FR-7</span></td>
+                        <td>自然语言查询</td>
+                        <td><span style="color:#f85149">⬜ Not Started</span></td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>FR-3, FR-4</td>
+                    </tr>
+                    <tr>
+                        <td><span class="tag tag-fr8">FR-8</span></td>
+                        <td>飞书 Bot 接入</td>
+                        <td><span style="color:#f85149">⬜ Not Started</span></td>
+                        <td><code>feishu/__init__.py</code>（占位）</td>
+                        <td>—</td>
+                        <td>FR-4, FR-5</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <footer>
+        <p>TaskGuard Architecture Visualization · Generated for project review</p>
+        <p style="margin-top:0.3rem;color:#6e7681">Last updated: 2026-05-29 · Source: Document/spec.md · Document/FR-*/plan.md</p>
+    </footer>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis',
+                padding: 16
+            },
+            subgraph: {
+                padding: 20
+            }
+        });
+
+        function setActive(el) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        // Highlight current section in nav on scroll
+        const sections = ['dependency', 'fr-mapping', 'fr-status'];
+        window.addEventListener('scroll', () => {
+            let current = '';
+            for (const id of sections) {
+                const section = document.getElementById(id);
+                if (section && section.getBoundingClientRect().top <= 200) {
+                    current = id;
+                }
+            }
+            if (current) {
+                document.querySelectorAll('.nav-tab').forEach(t => {
+                    t.classList.toggle('active', t.getAttribute('href') === '#' + current);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

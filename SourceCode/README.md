@@ -1,10 +1,24 @@
-# TaskGuard
+# TaskGuard — Python 后端
 
-进程守护与智能监控 Agent
+TaskGuard Python 后端，提供进程监控数据采集、进度分析、告警检测和 HTTP API 服务。
 
-## 快速启动 Agent（Python API）
+## 快速启动（开发模式）
 
-FR-2 提供了 `AgentHarness` 用于周期性采集日志与进程指标：
+```bash
+# 激活虚拟环境
+source python-runtime/Scripts/activate  # Git Bash
+# 或 .\python-runtime\Scripts\Activate.ps1  # PowerShell
+
+# 安装依赖
+pip install -e ".[dev]"
+
+# 启动 API 服务
+python -m taskguard.api.server
+```
+
+服务默认监听 `http://localhost:8080`。
+
+## 以库方式使用 AgentHarness
 
 ```python
 import asyncio
@@ -12,49 +26,54 @@ from pathlib import Path
 from taskguard.storage.task_store import TaskStore
 from taskguard.storage.metrics_store import MetricsStore
 from taskguard.agent import AgentHarness
+from taskguard.collectors.file_collector import FileCollector
 
 store = TaskStore(Path("data"))
 metrics = MetricsStore(Path("data/metrics.db"))
-loop = AgentHarness(store, metrics, collect_interval=5)
+harness = AgentHarness(store, metrics, collect_interval=5)
+
+# 注册采集器
+harness.register_collector("file", FileCollector())
 
 async def main():
     await store.load()
     await metrics.open()
     try:
-        await loop.run()
+        await harness.run()
     except KeyboardInterrupt:
-        loop.shutdown()
+        harness.shutdown()
     finally:
         await metrics.close()
 
 asyncio.run(main())
 ```
 
+## 注入点
+
 `AgentHarness` 支持以下注入点（由后续 FR 实现）：
 
-- `loop.analyzer` — FR-3 进度分析
-- `loop.alerter` — FR-4 告警引擎
-- `loop.crash_handler` — FR-5 崩溃场景 dump
+- `harness.analyzer` — FR-3 进度分析（正则 + LLM fallback）
+- `harness.alerter` — FR-5 告警引擎（规则检测 + 事件输出）
+- `harness.crash_handler` — FR-6 崩溃场景 dump
+- `harness.event_publisher` — FR-4 事件发布（WebSocket 推送前端）
+
+## API 端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/api/tasks` | 列出所有任务 |
+| `POST` | `/api/tasks` | 注册新任务 |
+| `PATCH` | `/api/tasks/{alias}` | 修改任务 |
+| `DELETE` | `/api/tasks/{alias}` | 注销任务 |
+| `GET` | `/api/tasks/{alias}/status` | 任务综合状态 |
+| `POST` | `/api/collect` | 手动触发采集 |
+| `POST` | `/api/natural` | 自然语言处理 |
+| `WS` | `/ws` | WebSocket 实时事件 |
 
 ## 文档索引
 
 - [功能规格说明](../Document/spec.md)
-- [FR-2 技术计划](../Document/FR-2/plan.md)
-- [FR-2 任务分解](../Document/FR-2/tasks.md)
-
-## Smoke Test
-
-参见 [FR-2 plan §16](../Document/FR-2/plan.md#16-验收-demo-脚本-manual-smoke-test) 的完整手动验收脚本。
-
-## CLI 命令
-
-```bash
-taskguard --help
-taskguard watch <alias> --log <uri> [--pid <pid>]
-taskguard unwatch <alias>
-taskguard list
-taskguard status <alias>
-```
+- [架构可视化](../Document/architecture.html)
 
 ## 开发命令
 

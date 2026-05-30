@@ -3,6 +3,7 @@
 Relates-to: FR-2
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -344,4 +345,146 @@ class TestEventPublisherInjection:
         harness.event_publisher = None
 
         await harness.run_once()  # should not raise
+        await harness._cleanup()
+
+
+class TestAlerterInjection:
+    async def test_alerter_called_and_alerts_attached(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """alerter.evaluate() is called and alerts attached to snapshot."""
+        from taskguard.models.alert import Alert
+
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_alerter = MagicMock()
+        mock_alerter.evaluate = AsyncMock(
+            return_value=[
+                Alert(rule="cpu_high", level="WARNING", message="CPU high", timestamp=datetime.now(UTC)),
+            ]
+        )
+        harness.alerter = mock_alerter
+
+        mock_metrics_store.save_alert = AsyncMock()
+
+        await harness.run_once()
+
+        mock_alerter.evaluate.assert_awaited_once()
+        # Alerts should be attached to the snapshot passed to save_snapshot
+        saved = mock_metrics_store.save_snapshot.call_args[0][0]
+        assert len(saved.alerts) == 1
+        assert saved.alerts[0].rule == "cpu_high"
+        await harness._cleanup()
+
+    async def test_alerter_none_no_error(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """alerter=None does not raise."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=[])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        harness.alerter = None
+
+        await harness.run_once()  # should not raise
+        saved = mock_metrics_store.save_snapshot.call_args[0][0]
+        assert saved.alerts == []
+        await harness._cleanup()
+
+    async def test_alerter_publishes_task_alert_events(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """Alerts trigger task.alert events via event_publisher."""
+        from taskguard.models.alert import Alert
+
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_alerter = MagicMock()
+        mock_alerter.evaluate = AsyncMock(
+            return_value=[
+                Alert(rule="cpu_high", level="WARNING", message="CPU high", timestamp=datetime.now(UTC)),
+            ]
+        )
+        harness.alerter = mock_alerter
+
+        mock_publisher = MagicMock()
+        mock_publisher.publish = AsyncMock()
+        harness.event_publisher = mock_publisher
+
+        mock_metrics_store.save_alert = AsyncMock()
+
+        await harness.run_once()
+
+        # Should publish task.alert event
+        alert_calls = [
+            call for call in mock_publisher.publish.call_args_list
+            if call[0][0] == "task.alert"
+        ]
+        assert len(alert_calls) == 1
+        assert alert_calls[0][0][1]["rule"] == "cpu_high"
+        assert alert_calls[0][0][1]["level"] == "WARNING"
+        await harness._cleanup()
+
+    async def test_alerter_oom_event_on_exited(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """process_exited with non-zero exit_code sends task.oom event."""
+        from taskguard.models.alert import Alert
+
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_alerter = MagicMock()
+        mock_alerter.evaluate = AsyncMock(
+            return_value=[
+                Alert(
+                    rule="process_exited",
+                    level="CRITICAL",
+                    message="Process exited with code 1",
+                    timestamp=datetime.now(UTC),
+                    snapshot={"exit_code": 1},
+                ),
+            ]
+        )
+        harness.alerter = mock_alerter
+
+        mock_publisher = MagicMock()
+        mock_publisher.publish = AsyncMock()
+        harness.event_publisher = mock_publisher
+
+        mock_metrics_store.save_alert = AsyncMock()
+
+        await harness.run_once()
+
+        oom_calls = [
+            call for call in mock_publisher.publish.call_args_list
+            if call[0][0] == "task.oom"
+        ]
+        assert len(oom_calls) == 1
+        assert oom_calls[0][0][1]["alias"] == "a"
         await harness._cleanup()

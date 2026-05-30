@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 
-__all__ = ["ProcessInfo", "ProgressInfo", "Snapshot"]
+from taskguard.models.alert import Alert
+
+__all__ = ["Alert", "ProcessInfo", "ProgressInfo", "Snapshot"]
 
 
 @dataclass(slots=True)
@@ -16,6 +18,7 @@ class ProcessInfo:
 
     cpu_percent: float | None = None
     memory_working_set: int | None = None
+    memory_percent: float | None = None  # process memory as % of total system memory
     status: str | None = None
     exit_code: int | None = None
 
@@ -42,4 +45,4 @@ class Snapshot:
     process: ProcessInfo | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     progress: ProgressInfo | None = None
-    alerts: list[str] = field(default_factory=list)
+    alerts: list[Alert] = field(default_factory=list)

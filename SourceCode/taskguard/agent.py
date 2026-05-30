@@ -112,7 +112,40 @@ class AgentHarness:
 
         # Injection point-3: alerter
         if self.alerter is not None:
-            snapshot.alerts = await self.alerter.evaluate(task, snapshot)
+            try:
+                from taskguard.alerters.engine import AlertEngine
+
+                if isinstance(self.alerter, AlertEngine):
+                    alerts = await self.alerter.evaluate_and_persist(task, snapshot, self._metrics_store)
+                else:
+                    alerts = await self.alerter.evaluate(task, snapshot)
+                    snapshot.alerts = alerts
+                for alert in alerts:
+                    if self.event_publisher is not None:
+                        await self.event_publisher.publish(
+                            "task.alert",
+                            {
+                                "alias": task.alias,
+                                "rule": alert.rule,
+                                "level": alert.level,
+                                "message": alert.message,
+                                "timestamp": alert.timestamp.isoformat(),
+                            },
+                        )
+                    # OOM event for critical process exit
+                    if alert.rule == "process_exited" and alert.level == "CRITICAL":
+                        exit_code = alert.snapshot.get("exit_code") if alert.snapshot else None
+                        if exit_code is not None and exit_code != 0 and self.event_publisher is not None:
+                            await self.event_publisher.publish(
+                                    "task.oom",
+                                    {
+                                        "alias": task.alias,
+                                        "message": alert.message,
+                                        "timestamp": alert.timestamp.isoformat(),
+                                    },
+                                )
+            except Exception:
+                logger.exception("Alerter failed for %s", task.alias)
 
         # Injection point-4: event publisher
         if self.event_publisher is not None:
@@ -126,6 +159,7 @@ class AgentHarness:
                     event_data["metrics"] = {
                         "cpu_percent": snapshot.process.cpu_percent,
                         "memory_working_set": snapshot.process.memory_working_set,
+                        "memory_percent": snapshot.process.memory_percent,
                         "status": snapshot.process.status,
                         "exit_code": snapshot.process.exit_code,
                     }
@@ -139,6 +173,16 @@ class AgentHarness:
                         "confidence": snapshot.progress.confidence,
                         "extracted_by": snapshot.progress.extracted_by,
                     }
+                if snapshot.alerts:
+                    event_data["alerts"] = [
+                        {
+                            "rule": a.rule,
+                            "level": a.level,
+                            "message": a.message,
+                            "timestamp": a.timestamp.isoformat(),
+                        }
+                        for a in snapshot.alerts
+                    ]
                 await self.event_publisher.publish("task.updated", event_data)
             except Exception:
                 logger.exception("Event publication failed for %s", task.alias)

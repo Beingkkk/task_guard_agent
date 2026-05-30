@@ -10,6 +10,7 @@ from typing import Any
 
 import aiosqlite
 
+from taskguard.models.alert import Alert
 from taskguard.models.snapshot import ProgressInfo, Snapshot
 
 __all__ = ["MetricsStore"]
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS metrics (
     timestamp TEXT NOT NULL,
     cpu_percent REAL,
     memory_working_set INTEGER,
+    memory_percent REAL,
     status TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_metrics_alias_time ON metrics(alias, timestamp);
@@ -58,6 +60,17 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_llm_usage_alias_time ON llm_usage(alias, timestamp);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    rule TEXT NOT NULL,
+    level TEXT NOT NULL,
+    message TEXT NOT NULL,
+    snapshot TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_alias_time ON alerts(alias, timestamp);
 """
 
 
@@ -92,12 +105,13 @@ class MetricsStore:
             pass
         if snapshot.process is not None:
             async with self._conn.execute(
-                "INSERT INTO metrics (alias, timestamp, cpu_percent, memory_working_set, status) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO metrics (alias, timestamp, cpu_percent, memory_working_set, memory_percent, status) VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     snapshot.task_alias,
                     ts,
                     snapshot.process.cpu_percent,
                     snapshot.process.memory_working_set,
+                    snapshot.process.memory_percent,
                     snapshot.process.status,
                 ),
             ):
@@ -146,14 +160,14 @@ class MetricsStore:
         if until is not None:
             until_str = until.isoformat()
             query = (
-                "SELECT id, alias, timestamp, cpu_percent, memory_working_set, status FROM metrics "
+                "SELECT id, alias, timestamp, cpu_percent, memory_working_set, memory_percent, status FROM metrics "
                 "WHERE alias = ? AND timestamp >= ? AND timestamp <= ? "
                 "ORDER BY timestamp"
             )
             params: tuple[Any, ...] = (alias, since_str, until_str)
         else:
             query = (
-                "SELECT id, alias, timestamp, cpu_percent, memory_working_set, status FROM metrics "
+                "SELECT id, alias, timestamp, cpu_percent, memory_working_set, memory_percent, status FROM metrics "
                 "WHERE alias = ? AND timestamp >= ? ORDER BY timestamp"
             )
             params = (alias, since_str)
@@ -275,6 +289,90 @@ class MetricsStore:
             rows = await cursor.fetchall()
             cols = [d[0] for d in cursor.description]
             return [dict(zip(cols, row, strict=False)) for row in rows]
+
+    async def save_alert(self, alias: str, alert: Alert) -> None:
+        """Persist an alert to the alerts table."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        ts = alert.timestamp.isoformat()
+        async with self._conn.execute(
+            "INSERT INTO alerts (alias, timestamp, rule, level, message, snapshot) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                alias,
+                ts,
+                alert.rule,
+                alert.level,
+                alert.message,
+                json.dumps(alert.snapshot) if alert.snapshot else None,
+            ),
+        ):
+            pass
+        await self._conn.commit()
+
+    async def query_alerts(
+        self,
+        alias: str,
+        since: datetime,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return alert rows for alias since the given time."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        since_str = since.isoformat()
+        query = (
+            "SELECT id, alias, timestamp, rule, level, message, snapshot FROM alerts "
+            "WHERE alias = ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?"
+        )
+        params: tuple[Any, ...] = (alias, since_str, limit)
+        async with self._conn.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            cols = [d[0] for d in cursor.description]
+            return [dict(zip(cols, row, strict=False)) for row in rows]
+
+    async def query_metrics_for_duration(
+        self,
+        alias: str,
+        field: str,
+        threshold: float,
+        duration: int,
+        before: datetime,
+    ) -> bool:
+        """Check if all metrics for `alias` in [before - duration, before] exceed threshold.
+
+        Returns True only if there is at least one data point AND all data points
+        within the window have the field value above the threshold.
+        """
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        from datetime import timedelta
+
+        since = before - timedelta(seconds=duration)
+        since_str = since.isoformat()
+        before_str = before.isoformat()
+
+        # Validate field name to prevent injection
+        allowed_fields = {"cpu_percent", "memory_percent"}
+        if field not in allowed_fields:
+            raise ValueError(f"Invalid field: {field}")
+
+        query = (
+            f"SELECT {field} FROM metrics "
+            "WHERE alias = ? AND timestamp >= ? AND timestamp <= ?"
+        )
+        params = (alias, since_str, before_str)
+
+        async with self._conn.execute(query, params) as cursor:
+            rows = list(await cursor.fetchall())
+            if len(rows) < 2:
+                # Need at least 2 data points to determine sustained condition
+                return False
+            for row in rows:
+                value = row[0]
+                if value is None:
+                    return False
+                if isinstance(value, (int, float)) and value <= threshold:
+                    return False
+            return True
 
     async def get_last_collect_time(self) -> datetime | None:
         """Return the timestamp of the most recent metrics record, or None if empty."""

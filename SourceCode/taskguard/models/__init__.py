@@ -3,6 +3,7 @@
 Relates-to: FR-1
 """
 
+from taskguard.models.alert import Alert
 from taskguard.models.errors import (
     CollectionError,
     StorageError,
@@ -14,6 +15,7 @@ from taskguard.models.snapshot import ProcessInfo, ProgressInfo, Snapshot
 from taskguard.models.task import LogSource, Task, TaskConfig
 
 __all__ = [
+    "Alert",
     "CollectionError",
     "LogSource",
     "ProcessInfo",

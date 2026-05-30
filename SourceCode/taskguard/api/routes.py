@@ -5,6 +5,7 @@ Relates-to: FR-4
 
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aiohttp import web
@@ -126,6 +127,29 @@ class TaskHandler:
             data = result.data if isinstance(result.data, dict) else {}
             return json_response(data)
         return _tool_result_to_http(result)
+
+    async def get_alerts(self, request: web.Request) -> web.Response:
+        """GET /api/tasks/{alias}/alerts — get alert history for a task."""
+        alias = request.match_info.get("alias", "")
+
+        # Verify task exists
+        try:
+            await self._store.get(alias)
+        except Exception:
+            return error_response("alias_not_found", f"Task '{alias}' not found", 404)
+
+        metrics_store = request.app.get("metrics_store")
+        if metrics_store is None:
+            return json_response({"alerts": []})
+
+        since = datetime.now(UTC) - timedelta(days=7)
+        try:
+            alerts = await metrics_store.query_alerts(alias, since=since, limit=100)
+        except Exception as exc:
+            logger.exception("Failed to query alerts for %s", alias)
+            return error_response("query_failed", str(exc), 500)
+
+        return json_response({"alerts": alerts})
 
     async def revise_task(self, request: web.Request) -> web.Response:
         """PATCH /api/tasks/{alias} — modify an existing task."""
@@ -257,6 +281,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/api/tasks", task_handler.create_task)
     app.router.add_delete("/api/tasks/{alias}", task_handler.delete_task)
     app.router.add_get("/api/tasks/{alias}/status", task_handler.get_status)
+    app.router.add_get("/api/tasks/{alias}/alerts", task_handler.get_alerts)
     app.router.add_patch("/api/tasks/{alias}", task_handler.revise_task)
 
     # Collect route

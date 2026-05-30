@@ -19,9 +19,12 @@ def _collect_sync(pid: int) -> ProcessInfo:
         cpu = proc.cpu_percent(interval=None)
         mem = proc.memory_info()
         status = "running" if proc.status() == psutil.STATUS_RUNNING else "not_responding"
+        total_mem = psutil.virtual_memory().total
+        mem_percent = (mem.rss / total_mem * 100) if total_mem > 0 else None
         return ProcessInfo(
             cpu_percent=cpu,
             memory_working_set=mem.rss,
+            memory_percent=mem_percent,
             status=status,
         )
     except psutil.NoSuchProcess:

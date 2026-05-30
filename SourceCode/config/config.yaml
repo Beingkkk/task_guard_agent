@@ -8,3 +8,13 @@ llm:
   min_interval: 60
   max_log_lines: 50
   regex_threshold: 0.6
+
+alerts:
+  default_cooldown: 300
+  escalation_time: 1800
+  rules:
+    cpu_high:         {threshold: 90, duration: 300, level: "WARNING"}
+    memory_high:      {threshold: 80, duration: 180, level: "WARNING"}
+    memory_critical:  {threshold: 95, level: "CRITICAL"}
+    log_stalled:      {threshold: 300, level: "WARNING"}
+    progress_stalled: {threshold: 600, level: "WARNING"}

@@ -76,11 +76,11 @@ FR-4 本身不做采集、不做进度解析、不做告警规则判断，只负
 - [ ] `pytest` 全绿，`ruff check .` / `mypy taskguard/` 无错误
 
 **Phase 3（前端）**：
-- [ ] Electron 应用可启动，显示卡片网格
-- [ ] 新增任务对话框可注册任务，卡片实时出现
-- [ ] 卡片状态随 WebSocket 事件实时更新
-- [ ] 系统托盘最小化后后台持续采集
-- [ ] 自然语言输入框可输入并执行操作
+- [x] Electron 应用可启动，显示卡片网格
+- [x] 新增任务对话框可注册任务，卡片实时出现
+- [x] 卡片状态随 WebSocket 事件实时更新
+- [x] 系统托盘最小化后后台持续采集
+- [x] 自然语言输入框可输入并执行操作
 
 ---
 
@@ -506,10 +506,10 @@ CSS 动画：
 
 | 阶段 | 状态 | 完成标准 |
 |---|---|---|
-| Phase 0 — 文档定稿 | ⬜ | plan.md / tasks.md 评审通过 |
-| Phase 1 — 后端 API 骨架 | ⬜ | aiohttp 服务 + REST + WebSocket + EventPublisher 全通 |
+| Phase 0 — 文档定稿 | ✅ | plan.md / tasks.md 评审通过 |
+| Phase 1 — 后端 API 骨架 | ✅ | aiohttp 服务 + REST + WebSocket + EventPublisher 全通 |
 | Phase 2 — 告警与现场留存 | ⬜ | FR-5 + FR-6 规则引擎实现，事件推送到前端 |
-| Phase 3 — Electron 前端 | ⬜ | 卡片 UI + WebSocket 实时更新 + 系统托盘 |
+| Phase 3 — Electron 前端 | ✅ | 卡片 UI + WebSocket 实时更新 + 系统托盘 + 自然语言输入 |
 | Phase 4 — 打包与稳定化 | ⬜ | pyinstaller + electron-builder，安装包可用 |
 
 ---

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskGuard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <h1>TaskGuard</h1>
+    <div class="header-actions">
+      <span id="connection-status" class="status-dot offline" title="连接状态"></span>
+      <button id="btn-add-task" class="btn btn-primary">+ 新增任务</button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="app-main">
+    <!-- Empty state -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">📋</div>
+      <p>暂无监控任务</p>
+      <p class="empty-hint">点击右上角「新增任务」开始监控</p>
+    </div>
+
+    <!-- Task grid -->
+    <div id="task-grid" class="task-grid"></div>
+  </main>
+
+  <!-- Natural Language Input (bottom fixed) -->
+  <footer class="natural-input-bar">
+    <div class="input-wrapper">
+      <span class="input-icon">💬</span>
+      <input
+        id="natural-input"
+        type="text"
+        placeholder="输入自然语言指令，例如：帮我监控下载A，日志在 C:\\data\\a.log"
+        autocomplete="off"
+      >
+      <button id="btn-send-natural" class="btn btn-send">发送</button>
+    </div>
+    <div id="natural-feedback" class="natural-feedback"></div>
+  </footer>
+
+  <!-- Add Task Dialog (modal) -->
+  <div id="add-task-dialog" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2>新增监控任务</h2>
+        <button class="btn-close" id="btn-close-dialog">&times;</button>
+      </header>
+      <form id="add-task-form" class="modal-body">
+        <div class="form-group">
+          <label for="task-alias">任务别名 <span class="required">*</span></label>
+          <input type="text" id="task-alias" name="alias" placeholder="例如：下载A" required>
+        </div>
+        <div class="form-group">
+          <label for="task-log">日志文件路径 <span class="required">*</span></label>
+          <input type="text" id="task-log" name="log" placeholder="C:\\data\\download.log" required>
+          <span class="form-hint">支持 file:// 前缀，多个文件用分号分隔</span>
+        </div>
+        <div class="form-group">
+          <label for="task-pid">进程 PID</label>
+          <input type="number" id="task-pid" name="pid" placeholder="可选，留空则不监控进程">
+        </div>
+        <div class="form-group">
+          <label for="task-tool">工具类型</label>
+          <select id="task-tool" name="tool_hint">
+            <option value="">自动检测</option>
+            <option value="wget">wget</option>
+            <option value="curl">curl</option>
+            <option value="rsync">rsync</option>
+            <option value="aria2">aria2</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-dialog">取消</button>
+          <button type="submit" class="btn btn-primary">注册</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast hidden">
+    <span id="toast-message"></span>
+  </div>
+
+  <!-- Scripts -->
+  <script src="components/StatusIndicator.js"></script>
+  <script src="components/TaskCard.js"></script>
+  <script src="components/TaskGrid.js"></script>
+  <script src="components/AddTaskDialog.js"></script>
+  <script src="components/NaturalInput.js"></script>
+  <script src="services/websocket.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

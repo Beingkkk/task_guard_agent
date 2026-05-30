@@ -204,12 +204,12 @@ T131 (静态检查)
 
 ## Phase 1 退出标准
 
-- [ ] `python -m taskguard.api.server` 可启动并监听 `localhost:8080`
-- [ ] REST API 所有端点通过 curl/httpx 验证
-- [ ] WebSocket 事件推送通过测试验证
-- [ ] `AgentHarness` 采集后自动发布事件
-- [ ] `ruff check .` / `mypy taskguard/` / `pytest -q` 全绿
-- [ ] 已删除文件无残留 import
+- [x] `python -m taskguard.api.server` 可启动并监听 `localhost:8080`
+- [x] REST API 所有端点通过 curl/httpx 验证
+- [x] WebSocket 事件推送通过测试验证
+- [x] `AgentHarness` 采集后自动发布事件
+- [x] `ruff check .` / `mypy taskguard/` / `pytest -q` 全绿
+- [x] 已删除文件无残留 import
 
 ---
 
@@ -223,36 +223,54 @@ T131 (静态检查)
 ## Phase 3 — Electron 前端
 
 > Phase 3 在 Phase 2 完成后启动。
+> **状态**: ✅ 已完成（2026-05-30）
 
-### T300 [实现] Electron 项目脚手架
+### T300 [实现] Electron 项目脚手架 ✅
 - 关联：plan §9
-- 文件：`frontend/package.json`, `frontend/main.js`
-- 验收：`cd frontend && npm install && npm start` 打开空白 Electron 窗口
+- 文件：`frontend/package.json`, `frontend/main.js`, `frontend/preload.js`
+- 实现：
+  - `package.json` 配置 Electron + ws 依赖
+  - `main.js` 主进程：启动 Python 子进程、创建窗口、系统托盘、WebSocket 客户端、HTTP API 代理 IPC
+  - `preload.js` 安全桥接：暴露 `electronAPI` 给渲染进程
+  - `assets/tray-icon.png`, `assets/icon.png` 占位图标
+- 验收：`cd frontend && npm install && npm start` 打开 Electron 窗口
 
-### T310 [实现] 卡片网格布局与组件
+### T310 [实现] 卡片网格布局与组件 ✅
 - 关联：plan §4.2
 - 文件：`frontend/renderer/components/TaskCard.js`, `TaskGrid.js`
-- 验收：静态 HTML 渲染 3 张测试卡片
+- 实现：
+  - `TaskCard`：状态指示灯（🟢/🟡/🔴/闪烁）、指标网格（CPU/内存/状态/退出码）、进度条、日志预览
+  - `TaskGrid`：CSS Grid 布局、动态增删卡片、空状态
+  - 状态规则：正常(绿灯) / 警告(黄灯) / 危险(红灯) / 严重(红灯+闪烁)
+- 验收：页面加载后通过 API 获取任务列表并渲染卡片
 
-### T320 [实现] WebSocket 实时更新
+### T320 [实现] WebSocket 实时更新 ✅
 - 关联：plan §9.2
 - 文件：`frontend/renderer/services/websocket.js`
-- 验收：连接 Python 后端后，收到 `task.updated` 事件并更新卡片
+- 实现：
+  - 主进程维护 `ws` 客户端连接 `ws://localhost:8080/ws`
+  - 收到消息后通过 IPC 转发给渲染进程
+  - 断线自动重连（3s 间隔）
+  - 渲染进程 `WsService` 提供事件订阅 API
+- 验收：收到 `task.updated` 事件后卡片数据实时更新
 
-### T330 [实现] 新增任务对话框
+### T330 [实现] 新增任务对话框 ✅
 - 关联：plan §4.3
 - 文件：`frontend/renderer/components/AddTaskDialog.js`
-- 验收：填写表单提交后，API 注册成功，卡片出现
+- 实现：模态对话框，表单字段（别名/日志路径/PID/工具类型），表单验证，API 提交
+- 验收：填写表单提交后调用 `POST /api/tasks`，成功后卡片出现
 
-### T340 [实现] 系统托盘
+### T340 [实现] 系统托盘 ✅
 - 关联：plan §4.6
 - 文件：`frontend/main.js`
-- 验收：最小化到托盘，右键菜单可用
+- 实现：关闭窗口时隐藏到托盘、托盘右键菜单（显示窗口/退出）、点击托盘图标切换显示
+- 验收：最小化到托盘后 Python 后端继续运行，右键菜单可用
 
-### T350 [实现] 自然语言输入框
+### T350 [实现] 自然语言输入框 ✅
 - 关联：plan §4.5
 - 文件：`frontend/renderer/components/NaturalInput.js`
-- 验收：输入中文后调用 `POST /api/natural`，展示结果
+- 实现：底部固定输入栏、Enter 发送、调用 `POST /api/natural`、结果显示反馈区域
+- 验收：输入中文指令后正确解析意图并执行对应操作
 
 ---
 

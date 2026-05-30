@@ -260,10 +260,10 @@ class ToolResult:
 |---|---|---|---|
 | `alias` | str | 是 | 唯一别名 |
 | `log` | str | 是 | 文件路径（如 `C:\data\dl.log`），多文件用分号分隔 |
-| `pid` | int | 否 | 进程 PID |
+| `pid` | int \| str | 否 | 进程 PID（整数）或进程名称（字符串，支持大小写不敏感模糊匹配） |
 | `config_overrides` | dict | 否 | 覆盖 `TaskConfig` 默认值 |
 
-错误码：`alias_exists`、`invalid_uri`、`invalid_pid`、`path_unreachable`。
+错误码：`alias_exists`、`invalid_uri`、`invalid_pid`、`ambiguous_pid`、`path_unreachable`。
 
 ### 8.2 `unwatch_task`
 

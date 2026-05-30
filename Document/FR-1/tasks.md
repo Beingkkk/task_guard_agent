@@ -104,7 +104,10 @@ T### [P?] [测试|实现|集成|文档] 简述
   - `watch_task` happy path：`pid=12345`、`log=file://...` → `ToolResult(ok=True, data=Task...)`
   - `watch_task` 重复别名 → `ok=False, error_code="alias_exists"`
   - `watch_task` 非法 URI → `error_code="invalid_uri"`
-  - `watch_task` `pid="abc"` → `error_code="invalid_pid"`
+  - `watch_task` `pid="abc"` 且无 log → `error_code="invalid_pid"`
+  - `watch_task` `pid="abc"` + log 存在 → 进程名搜索无匹配，退化为 log-only 监控，`ok=True`
+  - `watch_task` `pid="wget"` 匹配唯一进程 → 自动解析 PID，`ok=True`
+  - `watch_task` `pid="wget"` 匹配多个进程 → `error_code="ambiguous_pid"`，`data` 含候选列表
   - `unwatch_task` 找不到别名 → `error_code="alias_not_found"`
   - `unwatch_task` 别名 source=yaml → `error_code="alias_managed_by_yaml"`
   - `list_tasks` → `ok=True, data=list[dict]`

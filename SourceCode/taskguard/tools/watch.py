@@ -3,6 +3,7 @@
 Relates-to: FR-1
 """
 
+import asyncio
 from typing import Any
 
 from taskguard.models.errors import TaskNotFoundError, TaskRegistrationError
@@ -10,6 +11,38 @@ from taskguard.models.task import Task
 from taskguard.storage.task_store import TaskStore
 from taskguard.tools.base import BaseTool, ToolResult
 from taskguard.utils.log_source_uri import LogSource as LogSourceParser
+
+
+async def _resolve_pid(pid_raw: Any) -> tuple[int | None, list[dict[str, Any]] | None]:
+    """Resolve pid_raw to an integer PID.
+
+    Returns:
+        (pid, None)      – successfully resolved to a single PID.
+        (None, candidates) – ambiguous, multiple matches (data for user selection).
+        (None, None)     – could not resolve (no match or invalid).
+    """
+    if pid_raw is None:
+        return None, None
+
+    # Try integer first
+    try:
+        pid_int = int(pid_raw)
+        if pid_int <= 0:
+            return None, None
+        return pid_int, None
+    except (ValueError, TypeError):
+        pass
+
+    # Treat as process name
+    from taskguard.tools.find_process import _find_processes_sync
+
+    candidates = await asyncio.to_thread(_find_processes_sync, str(pid_raw))
+
+    if len(candidates) == 1:
+        return candidates[0]["pid"], None
+    if len(candidates) > 1:
+        return None, candidates
+    return None, None
 
 
 class WatchTaskTool(BaseTool):
@@ -41,17 +74,34 @@ class WatchTaskTool(BaseTool):
                 return ToolResult(ok=False, error_code="invalid_uri", message=str(exc))
 
         pid: int | None = None
+
         if pid_raw is not None:
-            try:
-                pid = int(pid_raw)
-                if pid <= 0:
-                    return ToolResult(
-                        ok=False, error_code="invalid_pid", message="PID must be positive"
-                    )
-            except (ValueError, TypeError):
+            resolved, ambiguous = await _resolve_pid(pid_raw)
+            if resolved is not None:
+                pid = resolved
+            elif ambiguous is not None:
                 return ToolResult(
-                    ok=False, error_code="invalid_pid", message=f"PID must be an integer: {pid_raw}"
+                    ok=False,
+                    error_code="ambiguous_pid",
+                    message=f"Multiple processes found matching '{pid_raw}'. Please choose one.",
+                    data=ambiguous,
                 )
+            else:
+                # Could not resolve as int or process name
+                try:
+                    int_pid = int(pid_raw)
+                    if int_pid <= 0:
+                        return ToolResult(
+                            ok=False, error_code="invalid_pid", message="PID must be positive"
+                        )
+                except (ValueError, TypeError):
+                    if log_source is None:
+                        return ToolResult(
+                            ok=False,
+                            error_code="invalid_pid",
+                            message=f"PID must be an integer or a valid process name: {pid_raw}",
+                        )
+                    # log_source is present: fall through to log-only monitoring
 
         if revise:
             return await self._do_revise(alias, log_source, pid)

@@ -22,7 +22,9 @@ def data_dir(tmp_path: Path) -> Path:
 class TestWatchCommand:
     def test_watch_file_happy(self, data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("TASKGUARD_DATA_DIR", str(data_dir))
-        result = runner.invoke(app, ["watch", "demo-bash", "--log", "file://C:\\test.log 127.0.0.1 -n 100"])
+        result = runner.invoke(
+            app, ["watch", "demo-bash", "--log", "file://C:\\test.log 127.0.0.1 -n 100"]
+        )
         assert result.exit_code == 0, result.output
 
     def test_watch_file_with_pid(self, data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:

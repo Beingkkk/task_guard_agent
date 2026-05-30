@@ -3,6 +3,8 @@
 Relates-to: FR-1
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from taskguard.models.task import LogSource, Task
@@ -52,10 +54,65 @@ class TestWatchTaskTool:
         assert result.error_code == "invalid_uri"
 
     @pytest.mark.asyncio
-    async def test_invalid_pid(self, tmp_path) -> None:
+    async def test_invalid_pid_no_log(self, tmp_path) -> None:
         store = TaskStore(tmp_path)
         tool = WatchTaskTool(store)
-        result = await tool.execute({"alias": "a", "log": "file://C:\\test.log", "pid": "abc"})
+        with patch("taskguard.tools.find_process.psutil.process_iter", return_value=iter([])):
+            result = await tool.execute({"alias": "a", "pid": "abc"})
+        assert result.ok is False
+        assert result.error_code == "invalid_pid"
+
+    @pytest.mark.asyncio
+    async def test_pid_name_no_match_log_fallback(self, tmp_path) -> None:
+        """Process name not found + log present → log-only monitoring."""
+        store = TaskStore(tmp_path)
+        tool = WatchTaskTool(store)
+        with patch("taskguard.tools.find_process.psutil.process_iter", return_value=iter([])):
+            result = await tool.execute(
+                {"alias": "a", "log": "file://C:\\test.log", "pid": "nonexistent"}
+            )
+        assert result.ok is True
+        assert result.data.pid is None
+        assert result.data.log_source is not None
+
+    @pytest.mark.asyncio
+    async def test_pid_name_single_match(self, tmp_path) -> None:
+        """Process name matches exactly one process → auto-resolve PID."""
+        store = TaskStore(tmp_path)
+        tool = WatchTaskTool(store)
+        mock_proc = MagicMock()
+        mock_proc.info = {"pid": 5678, "name": "wget.exe", "cmdline": ["wget.exe", "--mirror"]}
+        with patch(
+            "taskguard.tools.find_process.psutil.process_iter", return_value=iter([mock_proc])
+        ):
+            result = await tool.execute({"alias": "dl", "log": "file://C:\\dl.log", "pid": "wget"})
+        assert result.ok is True
+        assert result.data.pid == 5678
+
+    @pytest.mark.asyncio
+    async def test_pid_name_ambiguous(self, tmp_path) -> None:
+        """Process name matches multiple processes → ambiguous_pid error."""
+        store = TaskStore(tmp_path)
+        tool = WatchTaskTool(store)
+        mock_p1 = MagicMock()
+        mock_p1.info = {"pid": 1111, "name": "wget.exe", "cmdline": ["wget.exe", "-O", "a.zip"]}
+        mock_p2 = MagicMock()
+        mock_p2.info = {"pid": 2222, "name": "wget.exe", "cmdline": ["wget.exe", "-O", "b.zip"]}
+        with patch(
+            "taskguard.tools.find_process.psutil.process_iter",
+            return_value=iter([mock_p1, mock_p2]),
+        ):
+            result = await tool.execute({"alias": "dl", "log": "file://C:\\dl.log", "pid": "wget"})
+        assert result.ok is False
+        assert result.error_code == "ambiguous_pid"
+        assert isinstance(result.data, list)
+        assert len(result.data) == 2
+
+    @pytest.mark.asyncio
+    async def test_pid_negative(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        tool = WatchTaskTool(store)
+        result = await tool.execute({"alias": "a", "pid": "-1"})
         assert result.ok is False
         assert result.error_code == "invalid_pid"
 
@@ -115,6 +172,22 @@ class TestWatchTaskToolRevise:
         assert result.ok is True
         assert result.data.pid == 67890
         assert result.data.log_source.path == "C:\\a.log"  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_revise_pid_by_name(self, tmp_path) -> None:
+        """Revise mode: pid as process name resolves to single match."""
+        store = TaskStore(tmp_path)
+        watch = WatchTaskTool(store)
+        await watch.execute({"alias": "demo", "log": "file://C:\\a.log", "pid": 12345})
+
+        mock_proc = MagicMock()
+        mock_proc.info = {"pid": 9999, "name": "aria2c.exe", "cmdline": ["aria2c.exe"]}
+        with patch(
+            "taskguard.tools.find_process.psutil.process_iter", return_value=iter([mock_proc])
+        ):
+            result = await watch.execute({"alias": "demo", "revise": "True", "pid": "aria2c"})
+        assert result.ok is True
+        assert result.data.pid == 9999
 
     @pytest.mark.asyncio
     async def test_revise_alias_not_found(self, tmp_path) -> None:

@@ -125,9 +125,7 @@ class TestYamlMerge:
         store = TaskStore(tmp_path)
         yaml_path = tmp_path / "tasks.yaml"
         data = {
-            "tasks": [
-                {"alias": "下载C", "log_source": {"type": "file", "path": "C:\\test.log"}}
-            ]
+            "tasks": [{"alias": "下载C", "log_source": {"type": "file", "path": "C:\\test.log"}}]
         }
         yaml_path.write_text(yaml.dump(data), encoding="utf-8")
 
@@ -139,7 +137,9 @@ class TestYamlMerge:
     @pytest.mark.asyncio
     async def test_json_retained_when_no_yaml_conflict(self, tmp_path: Path) -> None:
         store = TaskStore(tmp_path)
-        t = Task(alias="服务B", log_source=LogSource(type="file", path="C:\\test.log"), source="cli")
+        t = Task(
+            alias="服务B", log_source=LogSource(type="file", path="C:\\test.log"), source="cli"
+        )
         await store.save_all([t])
 
         yaml_path = tmp_path / "tasks.yaml"

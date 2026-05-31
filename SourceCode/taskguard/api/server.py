@@ -125,10 +125,14 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
 async def main() -> None:
     """Main entry point for the API server."""
     import os
+    import sys
 
     data_dir = Path(os.environ.get("TASKGUARD_DATA_DIR", "./data")).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
-    config_path = Path("config")
+
+    # Support PyInstaller bundled executable: config files are extracted to _MEIPASS
+    meipass = getattr(sys, "_MEIPASS", None)
+    config_path = Path(meipass) / "config" if meipass else Path("config")
 
     harness, store, metrics = await _setup_harness(config_path, data_dir)
 

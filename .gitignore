@@ -219,3 +219,13 @@ __marimo__/
 
 # TaskGuard config with secrets
 SourceCode/config/*.json
+
+# Claude Code session data
+.claude/
+
+# CodeGraph indexes
+.codegraph/
+SourceCode/.codegraph/
+
+# Node.js dependencies
+SourceCode/frontend/node_modules/

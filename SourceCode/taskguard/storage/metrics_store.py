@@ -383,3 +383,56 @@ class MetricsStore:
             if row and row[0]:
                 return datetime.fromisoformat(row[0])
         return None
+
+    async def query_recent_log_lines(self, alias: str, limit: int = 500) -> list[str]:
+        """Return the most recent log lines for alias (newest first, aggregated).
+
+        Lines are returned in chronological order (oldest first).
+        """
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        query = (
+            "SELECT lines FROM logs WHERE alias = ? ORDER BY timestamp DESC LIMIT ?"
+        )
+        params: tuple[Any, ...] = (alias, limit * 2)  # Fetch more rows to ensure enough lines
+        lines: list[str] = []
+        async with self._conn.execute(query, params) as cursor:
+            rows = list(await cursor.fetchall())
+            # Collect lines from newest to oldest, then reverse
+            for row in reversed(rows):
+                batch = json.loads(row[0])
+                lines.extend(batch)
+        # If we have more than limit, take the last `limit` (most recent)
+        if len(lines) > limit:
+            lines = lines[-limit:]
+        return lines
+
+    async def query_peak_metrics(
+        self,
+        alias: str,
+        since: datetime,
+        fields: list[str],
+    ) -> dict[str, Any]:
+        """Return peak (max) values for specified fields over the time window.
+
+        Only numeric fields from the metrics table are supported.
+        """
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        allowed_fields = {"cpu_percent", "memory_working_set", "memory_percent"}
+        valid_fields = [f for f in fields if f in allowed_fields]
+        if not valid_fields:
+            return {}
+
+        since_str = since.isoformat()
+        results: dict[str, Any] = {}
+        for field in valid_fields:
+            query = (
+                f"SELECT MAX({field}) FROM metrics "
+                "WHERE alias = ? AND timestamp >= ?"
+            )
+            async with self._conn.execute(query, (alias, since_str)) as cursor:
+                row = await cursor.fetchone()
+                if row and row[0] is not None:
+                    results[field] = row[0]
+        return results

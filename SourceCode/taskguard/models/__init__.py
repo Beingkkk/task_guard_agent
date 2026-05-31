@@ -3,6 +3,7 @@
 Relates-to: FR-1
 """
 
+from taskguard.crash.models import CrashDump
 from taskguard.models.alert import Alert
 from taskguard.models.errors import (
     CollectionError,
@@ -17,6 +18,7 @@ from taskguard.models.task import LogSource, Task, TaskConfig
 __all__ = [
     "Alert",
     "CollectionError",
+    "CrashDump",
     "LogSource",
     "ProcessInfo",
     "ProgressInfo",

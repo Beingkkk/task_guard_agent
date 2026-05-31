@@ -444,10 +444,10 @@ class TestAlerterInjection:
         assert alert_calls[0][0][1]["level"] == "WARNING"
         await harness._cleanup()
 
-    async def test_alerter_oom_event_on_exited(
+    async def test_alerter_no_longer_sends_oom_event(
         self, mock_store: MagicMock, mock_metrics_store: MagicMock,
     ) -> None:
-        """process_exited with non-zero exit_code sends task.oom event."""
+        """Alerter no longer sends task.oom — that's crash_handler's job (FR-6)."""
         from taskguard.models.alert import Alert
 
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
@@ -485,6 +485,203 @@ class TestAlerterInjection:
             call for call in mock_publisher.publish.call_args_list
             if call[0][0] == "task.oom"
         ]
+        assert len(oom_calls) == 0  # alerter no longer sends task.oom
+        await harness._cleanup()
+
+
+class TestCrashHandlerInjection:
+    async def test_crash_handler_called_with_metrics_store(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """crash_handler.dump() receives metrics_store and is called on exited."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_dumper = MagicMock()
+        mock_dumper.dump = AsyncMock(return_value=None)
+        harness.crash_handler = mock_dumper
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(status="exited", exit_code=1)),
+        ):
+            await harness.run_once()
+
+        mock_dumper.dump.assert_awaited_once()
+        call_args = mock_dumper.dump.call_args
+        assert call_args[0][0] == task  # task
+        assert call_args[0][1].task_alias == "a"  # snapshot
+        assert call_args[0][2] == mock_metrics_store  # metrics_store
+        await harness._cleanup()
+
+    async def test_crash_handler_returns_path_publishes_oom_event(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """When crash_handler returns a Path, task.oom event is published with dump_path."""
+        from pathlib import Path as SystemPath
+
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        dump_path = SystemPath("data/crash_dumps/a_20260530_080000.json")
+        mock_dumper = MagicMock()
+        mock_dumper.dump = AsyncMock(return_value=dump_path)
+        harness.crash_handler = mock_dumper
+
+        mock_publisher = MagicMock()
+        mock_publisher.publish = AsyncMock()
+        harness.event_publisher = mock_publisher
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(status="exited", exit_code=1)),
+        ):
+            await harness.run_once()
+
+        oom_calls = [
+            call for call in mock_publisher.publish.call_args_list
+            if call[0][0] == "task.oom"
+        ]
         assert len(oom_calls) == 1
         assert oom_calls[0][0][1]["alias"] == "a"
+        assert oom_calls[0][0][1]["dump_path"] == str(dump_path)
+        assert oom_calls[0][0][1]["reason"] == "process_exited"
+        assert oom_calls[0][0][1]["exit_code"] == 1
+        assert "timestamp" in oom_calls[0][0][1]
+        await harness._cleanup()
+
+    async def test_crash_handler_returns_none_no_oom_event(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """When crash_handler returns None, no task.oom event is sent."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_dumper = MagicMock()
+        mock_dumper.dump = AsyncMock(return_value=None)
+        harness.crash_handler = mock_dumper
+
+        mock_publisher = MagicMock()
+        mock_publisher.publish = AsyncMock()
+        harness.event_publisher = mock_publisher
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(status="exited", exit_code=1)),
+        ):
+            await harness.run_once()
+
+        oom_calls = [
+            call for call in mock_publisher.publish.call_args_list
+            if call[0][0] == "task.oom"
+        ]
+        assert len(oom_calls) == 0
+        await harness._cleanup()
+
+    async def test_crash_handler_none_no_error(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """crash_handler=None does not raise on exited process."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        harness.crash_handler = None
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(status="exited", exit_code=1)),
+        ):
+            await harness.run_once()  # should not raise
+
+        await harness._cleanup()
+
+    async def test_crash_handler_exception_isolated(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """crash_handler exception does not break the collection cycle."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_dumper = MagicMock()
+        mock_dumper.dump = AsyncMock(side_effect=RuntimeError("dump failed"))
+        harness.crash_handler = mock_dumper
+
+        mock_publisher = MagicMock()
+        mock_publisher.publish = AsyncMock()
+        harness.event_publisher = mock_publisher
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(status="exited", exit_code=1)),
+        ):
+            await harness.run_once()  # should not raise
+
+        # task.updated should still be published
+        updated_calls = [
+            call for call in mock_publisher.publish.call_args_list
+            if call[0][0] == "task.updated"
+        ]
+        assert len(updated_calls) == 1
+        await harness._cleanup()
+
+    async def test_crash_handler_not_called_when_running(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+    ) -> None:
+        """crash_handler is not called when process status is running."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        mock_dumper = MagicMock()
+        mock_dumper.dump = AsyncMock(return_value=None)
+        harness.crash_handler = mock_dumper
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(status="running", cpu_percent=10.0)),
+        ):
+            await harness.run_once()
+
+        mock_dumper.dump.assert_not_called()
         await harness._cleanup()

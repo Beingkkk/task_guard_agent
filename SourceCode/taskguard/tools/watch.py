@@ -164,6 +164,16 @@ class WatchTaskTool(BaseTool):
                 message="No fields to update. Provide --log or --pid",
             )
 
+        # FR-6: Clear crash dump flag on revise so a re-registered task can be dumped again
+        if pid is not None:
+            try:
+                task = await self._store.get(alias)
+                if "_crash_dumped" in task.state:
+                    del task.state["_crash_dumped"]
+                    update_kwargs["state"] = task.state
+            except TaskNotFoundError:
+                pass  # Already handled above
+
         try:
             updated = await self._store.update(alias, **update_kwargs)
         except ValueError as exc:

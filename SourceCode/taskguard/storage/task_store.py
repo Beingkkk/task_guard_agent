@@ -121,6 +121,7 @@ class TaskStore:
         alias: str,
         log_source: Any = None,
         pid: int | None = None,
+        state: dict[str, Any] | None = None,
     ) -> Task:
         """Update specific fields of an existing task.
 
@@ -135,6 +136,8 @@ class TaskStore:
             task.log_source = log_source
         if pid is not None:
             task.pid = pid
+        if state is not None:
+            task.state = state
 
         if task.pid is None and task.log_source is None:
             raise ValueError("Task must have at least one of pid or log_source")

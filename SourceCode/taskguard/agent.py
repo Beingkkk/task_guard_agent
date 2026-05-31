@@ -95,7 +95,21 @@ class AgentHarness:
 
         # Injection point-1: crash handler
         if self.crash_handler and process_info is not None and process_info.status == "exited":
-            await self.crash_handler.dump(task, snapshot)
+            try:
+                dump_path = await self.crash_handler.dump(task, snapshot, self._metrics_store)
+                if dump_path is not None and self.event_publisher is not None:
+                    await self.event_publisher.publish(
+                        "task.oom",
+                        {
+                            "alias": task.alias,
+                            "timestamp": snapshot.timestamp.isoformat(),
+                            "dump_path": str(dump_path),
+                            "reason": "process_exited",
+                            "exit_code": process_info.exit_code,
+                        },
+                    )
+            except Exception:
+                logger.exception("Crash handler failed for %s", task.alias)
 
         # Injection point-2: analyzer
         if self.analyzer is not None:
@@ -132,18 +146,6 @@ class AgentHarness:
                                 "timestamp": alert.timestamp.isoformat(),
                             },
                         )
-                    # OOM event for critical process exit
-                    if alert.rule == "process_exited" and alert.level == "CRITICAL":
-                        exit_code = alert.snapshot.get("exit_code") if alert.snapshot else None
-                        if exit_code is not None and exit_code != 0 and self.event_publisher is not None:
-                            await self.event_publisher.publish(
-                                    "task.oom",
-                                    {
-                                        "alias": task.alias,
-                                        "message": alert.message,
-                                        "timestamp": alert.timestamp.isoformat(),
-                                    },
-                                )
             except Exception:
                 logger.exception("Alerter failed for %s", task.alias)
 

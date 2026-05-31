@@ -6,6 +6,7 @@ Relates-to: FR-2
 from unittest.mock import MagicMock, patch
 
 import psutil
+import pytest
 
 from taskguard.collectors.process_collector import ProcessCollector
 
@@ -53,3 +54,44 @@ class TestProcessCollector:
         collector = ProcessCollector()
         info = await collector.collect(None)
         assert info is None
+
+    async def test_no_such_process_returns_exit_code_on_windows(self) -> None:
+        """On Windows, NoSuchProcess should attempt to get exit_code via ctypes."""
+        import sys
+
+        with patch(
+            "taskguard.collectors.process_collector.psutil.Process",
+            side_effect=psutil.NoSuchProcess(12345),
+        ):
+            collector = ProcessCollector()
+            info = await collector.collect(12345)
+
+        assert info is not None
+        assert info.status == "exited"
+        # On Windows, exit_code may be retrieved via ctypes; on other platforms it's None
+        if sys.platform == "win32":
+            # We can't guarantee a real exit code in tests, but the field should exist
+            assert hasattr(info, "exit_code")
+        else:
+            assert info.exit_code is None
+
+    async def test_no_such_process_with_exit_code_from_windows_api(self) -> None:
+        """Test that exit_code is populated when Windows API succeeds."""
+        import sys
+
+        if sys.platform != "win32":
+            pytest.skip("Windows-only test")
+
+        with patch(
+            "taskguard.collectors.process_collector.psutil.Process",
+            side_effect=psutil.NoSuchProcess(12345),
+        ), patch(
+            "taskguard.collectors.process_collector._get_exit_code_windows",
+            return_value=42,
+        ):
+            collector = ProcessCollector()
+            info = await collector.collect(12345)
+
+        assert info is not None
+        assert info.status == "exited"
+        assert info.exit_code == 42

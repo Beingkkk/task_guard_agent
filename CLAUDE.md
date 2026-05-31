@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TaskGuard is a Windows desktop monitoring app (Electron + Python) that watches long-running processes, collects log progress and system resource metrics, and alerts via GUI visual indicators (red cards, flashing on OOM). It supports natural language input and preserves crash/OOM scene information.
 
-- **Frontend**: Electron + HTML/JS/CSS (Phase 3, not yet created)
+- **Frontend**: Electron + HTML/JS/CSS (Phase 3 complete)
 - **Backend**: Python 3.11 + aiohttp (REST API + WebSocket)
 - **Packaging**: pyinstaller (Python) + electron-builder (Electron) → single `.exe`
 
@@ -44,6 +44,11 @@ taskguard unwatch <alias>
 taskguard list
 taskguard status <alias>
 
+# Start Electron GUI (dev mode)
+cd frontend && npx electron . --dev
+# Or use the convenience script from SourceCode/
+.\start-gui.cmd
+
 # Lint and format
 ruff format .
 ruff check . --fix
@@ -64,17 +69,20 @@ pytest tests/test_models_progress.py tests/test_llm_*.py tests/test_analyzers_*.
 
 # Run FR-4 tests only (API layer)
 pytest tests/test_api_*.py -v
+
+# Run FR-5 tests only (alert layer)
+pytest tests/test_models_alert.py tests/test_alerters_*.py tests/test_storage_metrics_alerts.py -v
 ```
 
 ## API Service
 
 The Python backend runs an aiohttp server on `localhost:8080`:
 
-- **REST API**: `/api/tasks` (CRUD), `/api/tasks/{alias}/status`, `/api/collect`, `/api/natural`
+- **REST API**: `/api/tasks` (CRUD), `/api/tasks/{alias}/status`, `/api/tasks/{alias}/alerts`, `/api/collect`, `/api/natural`
 - **WebSocket**: `/ws` — real-time event stream (`task.updated`, `task.alert`, `task.oom`)
 - **Background**: AgentHarness runs a periodic collect cycle (default 30s) while the server handles HTTP requests
 
-The Electron frontend (Phase 3) will connect to this server via HTTP + WebSocket.
+The Electron frontend connects to this server via HTTP + WebSocket. The main process spawns the Python backend as a child process.
 
 ## FR Planning Documents (SDD)
 
@@ -83,7 +91,7 @@ The project strictly follows **SDD (Spec-Driven Development)**. Every feature mu
 Each FR has a planning directory under `Document/FR-<N>/`:
 
 - `Document/spec.md` — Full functional spec. Any code change involving FRs must reference the FR number in commits/PRs via `Relates-to: FR-N`.
-- `Document/constitution.md` — Python constraints **and** SDD workflow mandate.
+- `Document/constitution.md` — Python development constraints **and** SDD workflow mandate.
 - `Document/FR-<N>/plan.md` — Technical plan: scope, data model, API contracts, architecture decisions (AD-N), risks, Smoke Test script.
 - `Document/FR-<N>/tasks.md` — TDD task breakdown with dependency graph, `[P]` parallel markers, and exit criteria.
 
@@ -96,13 +104,21 @@ Each FR has a planning directory under `Document/FR-<N>/`:
 
 If implementation diverges from spec, write an ADR in `Document/adr/` and note it at the top of the affected `tasks.md`.
 
+**Commit convention** (Conventional Commits):
+```
+<type>(<scope>): <description>
+
+Relates-to: FR-N
+```
+Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Scopes: `collectors`, `analyzers`, `alerters`, `llm`, `tools`, `cli`, `models`, `storage`, `api`, `agent`, `gui`.
+
 ## Data Layout
 
 User-facing configuration lives in `SourceCode/config/` (tracked by git):
 
 ```
 config/
-├── config.yaml             # Agent main config (interval, thresholds, LLM)
+├── config.yaml             # Agent main config (interval, thresholds, LLM, alerts)
 ├── config-claude.json      # Claude Provider config (auth_key, base_url, model_name)
 └── tasks.yaml              # Task definitions (loaded at boot, merged with JSON)
 ```
@@ -114,8 +130,8 @@ Runtime data lives in `SourceCode/data/` (gitignored):
 ```
 data/
 ├── tasks_state.json     # Task registry (JSON, versioned, atomic writes via os.replace)
-├── metrics.db           # SQLite time-series: logs / metrics / progress / llm_usage
-├── crash_dumps/         # OOM scene dumps (FR-6+)
+├── metrics.db           # SQLite time-series: logs / metrics / progress / llm_usage / alerts
+├── crash_dumps/         # OOM scene dumps (FR-6+ — not yet implemented)
 └── taskguard.log        # API server log output
 ```
 
@@ -126,7 +142,9 @@ data/
 The backend follows a **layered + event-driven** architecture:
 
 ```
-Electron Frontend (Phase 3)
+Electron Frontend (Renderer)
+  ↕ IPC
+Electron Main Process (main.js)
   ↕ HTTP / WebSocket
 Python API Service (api/server.py)
   → REST routes (api/routes.py)
@@ -141,7 +159,7 @@ Python API Service (api/server.py)
 
 ### Key Architectural Principles
 
-**Tool Registry as the central hub.** The API layer and future Electron frontend both interact through `ToolRegistry.get(name).execute(params)`. The API routes are a thin wrapper that translate HTTP requests into Tool calls. New interaction channels only need a parser/adapter — no Tool changes.
+**Tool Registry as the central hub.** The API layer and Electron frontend both interact through `ToolRegistry.get(name).execute(params)`. The API routes are a thin wrapper that translate HTTP requests into Tool calls. New interaction channels only need a parser/adapter — no Tool changes.
 
 **Strict layer isolation.** Upper layers may call lower layers; lower layers must never call upper layers. `api/` may only call `tools/` and `agent.py`. `tools/` may call `collectors/`/`analyzers/`/`alerters/`. Direct cross-layer imports are forbidden.
 
@@ -151,7 +169,7 @@ Python API Service (api/server.py)
 
 **定时驱动 + 顺序管道 + 属性注入点.** The `AgentHarness` runs a periodic collect cycle (default 30s): collects log deltas + process metrics → builds Snapshot → applies injection points (`analyzer`, `alerter`, `crash_handler`, `event_publisher`) → persists to SQLite. Collection, analysis, and alerting are sequential per-task to avoid state races. FR-3/5/6 extend behavior by assigning instances to Harness properties, not by modifying Harness code.
 
-**Event system for real-time updates.** `AgentHarness.event_publisher` (an `EventPublisher` instance) broadcasts `task.updated`/`task.alert`/`task.oom` events after each collection cycle. The WebSocket manager subscribes to these events and forwards them to all connected frontend clients.
+**Event system for real-time updates.** `AgentHarness.event_publisher` broadcasts `task.updated`/`task.alert`/`task.oom` events after each collection cycle. The WebSocket manager subscribes to these events and forwards them to all connected frontend clients.
 
 **File-only log source.** `LogSource.parse()` accepts a bare path or optional `file://` prefix. Multiple files are semicolon-separated. Directories are rejected.
 
@@ -161,8 +179,8 @@ Python API Service (api/server.py)
 
 1. `collectors/` reads raw data: `FileCollector` tails log files (per-file offset state), `ProcessCollector` samples `psutil` metrics
 2. `analyzers/pipeline.py` runs regex templates → falls back to `llm/` ClaudeProvider when needed
-3. `alerters/` (FR-5, not yet wired) will evaluate `Snapshot` against rules with cooldown/escalation
-4. `storage/` persists: `tasks_state.json` for task registry, SQLite for time-series (`logs` / `metrics` / `progress` / `llm_usage` tables), `crash_dumps/` for OOM scenes
+3. `alerters/engine.py` evaluates `Snapshot` against rules with cooldown/escalation, persists alerts to SQLite
+4. `storage/` persists: `tasks_state.json` for task registry, SQLite for time-series (`logs` / `metrics` / `progress` / `llm_usage` / `alerts` tables), `crash_dumps/` for OOM scenes
 5. `api/events.py` broadcasts events to WebSocket clients after each collection cycle
 
 ### AgentHarness Injection Points
@@ -185,6 +203,24 @@ Python API Service (api/server.py)
 - `exec_bash` — Run a whitelisted bash command (`ps`, `netstat`, `tasklist`, `ping`, etc.)
 - `find_process` — Search running processes by name
 
+### Alert Rules (FR-5)
+
+The `AlertEngine` evaluates 9 built-in rules each collection cycle:
+
+| Rule | Condition | Level |
+|---|---|---|
+| `process_exited` | status == "exited" | CRITICAL |
+| `not_responding` | status == "not_responding" | WARNING |
+| `memory_critical` | memory_percent > `memory_critical` (default 95%) | CRITICAL |
+| `memory_high` | memory_percent > `memory_warning` sustained 3min | WARNING |
+| `cpu_high` | cpu_percent > `cpu_warning` sustained 5min | WARNING |
+| `log_error_keyword` | log lines match ERROR/FATAL/Exception | WARNING |
+| `progress_error` | progress.status == "error" | WARNING |
+| `log_stalled` | no new logs for > `stalled_threshold` | WARNING |
+| `progress_stalled` | percentage unchanged for 10min | WARNING |
+
+Cooldown: WARNING/INFO alerts suppressed for `alert_cooldown` (default 300s) per (alias, rule). CRITICAL bypasses cooldown. Escalation: WARNING sustained for `escalation_time` (default 1800s) upgrades to CRITICAL.
+
 ### Important Files
 
 - `Document/spec.md` — Full functional spec (v0.4, Electron GUI architecture)
@@ -193,11 +229,11 @@ Python API Service (api/server.py)
 
 ### FR Completion Status
 
-- **FR-1** (Task registry, ToolRegistry) — Complete
+- **FR-1** (Task registry, ToolRegistry, find_process, revise mode) — Complete
 - **FR-2** (Periodic collection: FileCollector, ProcessCollector, MetricsStore, AgentHarness) — Complete
 - **FR-3** (AnalyzerPipeline with regex + LLM fallback, Claude only) — Complete; assigned to `AgentHarness.analyzer`
-- **FR-4** (Electron GUI + aiohttp API + WebSocket + EventPublisher) — Phase 1 complete (backend API); Phase 3 pending (Electron frontend)
-- **FR-5** (AlertEngine with cooldown/escalation) — Not started; assign to `AgentHarness.alerter`
+- **FR-4** (Electron GUI + aiohttp API + WebSocket + EventPublisher) — Phase 1 (backend API) and Phase 3 (Electron frontend) complete; Phase 4 (packaging) pending
+- **FR-5** (AlertEngine with 9 rules, cooldown/escalation, alerts API) — Complete; assigned to `AgentHarness.alerter`
 - **FR-6** (CrashDumper for OOM scene preservation) — Not started; assign to `AgentHarness.crash_handler`
 - **FR-7+** — See `Document/spec.md`
 

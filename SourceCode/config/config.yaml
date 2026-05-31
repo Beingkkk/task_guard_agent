@@ -18,3 +18,8 @@ alerts:
     memory_critical:  {threshold: 95, level: "CRITICAL"}
     log_stalled:      {threshold: 300, level: "WARNING"}
     progress_stalled: {threshold: 600, level: "WARNING"}
+
+crash:
+  max_dumps: 10
+  log_lines: 500
+  metrics_minutes: 10

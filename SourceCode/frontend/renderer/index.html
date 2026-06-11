@@ -3,27 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TaskGuard — 智能任务监视</title>
-  <meta name="description" content="TaskGuard 智能任务监视器 — 实时监控进程状态、资源占用与日志进度">
+  <title>智能任务监控</title>
+  <meta name="description" content="智能任务监控 — 实时监控进程状态、资源占用与日志进度">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <!-- Custom Title Bar -->
   <div class="titlebar" id="titlebar">
     <div class="titlebar-drag">
-      <svg class="titlebar-icon" viewBox="0 0 28 28" fill="none"
+      <svg class="titlebar-icon" viewBox="0 0 24 24" fill="none"
            xmlns="http://www.w3.org/2000/svg"
            style="flex-shrink:0"
            aria-hidden="true"
            role="img"
       >
-        <title>TaskGuard</title>
-        <rect x="3" y="12" width="5" height="6" rx="1.5" fill="currentColor" opacity="0.35"/>
-        <rect x="10" y="7" width="5" height="16" rx="1.5" fill="currentColor" opacity="0.65"/>
-        <rect x="17" y="3" width="5" height="24" rx="1.5" fill="currentColor"/>
-        <rect x="24" y="10" width="2" height="10" rx="1" fill="currentColor" opacity="0.5"/>
+        <title>智能任务监控</title>
+        <path d="M12 2C7.58 2 4 5.58 4 10c0 3.5 2.2 6.48 5.5 7.67V20c0 .55.45 1 1 1h3c.55 0 1-.45 1-1v-2.33C17.8 16.48 20 13.5 20 10c0-4.42-3.58-8-8-8z" fill="currentColor" opacity="0.2"/>
+        <path d="M12 5c-2.76 0-5 2.24-5 5 0 2.5 1.84 4.58 4.25 4.94V18h1.5v-3.06C14.16 14.58 16 12.5 16 10c0-2.76-2.24-5-5-5z" fill="currentColor" opacity="0.55"/>
+        <circle cx="12" cy="10" r="2" fill="currentColor"/>
       </svg>
-      <span class="titlebar-text">TaskGuard</span>
+      <span class="titlebar-text">智能任务监控</span>
     </div>
     <div class="titlebar-controls">
       <button class="titlebar-btn" id="tb-minimize" title="最小化">
@@ -47,9 +46,19 @@
         <span class="panel-subtitle" id="process-count">0 个进程</span>
       </div>
       <div class="search-box">
-        <span class="search-icon">🔍</span>
+        <span class="search-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="M21 21l-4.35-4.35"/>
+          </svg>
+        </span>
         <input type="text" id="process-search" placeholder="搜索名称或 PID..." autocomplete="off">
-        <button id="btn-refresh-processes" class="btn-icon" title="刷新进程列表">🔄</button>
+        <button id="btn-refresh-processes" class="btn-icon" title="刷新进程列表">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </button>
       </div>
       <div class="process-list" id="process-list">
         <!-- Process items injected here -->
@@ -87,7 +96,12 @@
 
       <!-- Empty state -->
       <div id="empty-state" class="empty-state">
-        <div class="empty-icon">📋</div>
+        <div class="empty-icon">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+        </div>
         <p>暂无监控任务</p>
         <p class="empty-hint">从左侧选择进程并点击「设置监控」</p>
       </div>
@@ -97,14 +111,34 @@
         <div class="detail-header">
           <h3 id="detail-title">任务详情</h3>
           <div class="detail-header-actions">
-            <button id="btn-refresh-detail" class="btn-icon" title="刷新任务状态">🔄</button>
-            <button id="btn-close-detail" class="btn-icon" title="关闭">✕</button>
+            <button id="btn-refresh-detail" class="btn-icon" title="刷新任务状态">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </button>
+            <button id="btn-close-detail" class="btn-icon" title="关闭">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
           </div>
         </div>
         <div class="detail-body">
           <div class="detail-info" id="detail-info"></div>
           <div class="detail-ask" id="detail-ask">
-            <div class="ask-history" id="ask-history"></div>
+            <div class="ask-history" id="ask-history">
+            <div class="ask-empty-hint" id="ask-empty-hint">
+              <div class="ask-empty-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <div class="ask-empty-title">与 AI 助手对话</div>
+              <div class="ask-empty-desc">输入问题，获取任务状态分析、异常排查建议</div>
+            </div>
+          </div>
             <div class="ask-input-bar">
               <input type="text" id="ask-input" placeholder="询问该任务状态，例如：当前进度如何？" autocomplete="off">
               <button id="btn-send-ask" class="btn btn-send">发送</button>
@@ -121,7 +155,12 @@
     <div class="modal-content">
       <header class="modal-header">
         <h2>设置监控</h2>
-        <button class="btn-close" id="btn-close-watch-dialog">&times;</button>
+        <button class="btn-close" id="btn-close-watch-dialog" aria-label="关闭">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </header>
       <form id="watch-form" class="modal-body">
         <div class="form-group">
@@ -137,8 +176,8 @@
           <div class="file-picker-row">
             <span id="watch-log-display" class="file-picker-display">未选择</span>
             <input type="hidden" id="watch-log" name="log">
-            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-file">📄 选择文件</button>
-            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-dir">📁 选择目录</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-file">选择文件</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-dir">选择目录</button>
           </div>
           <span class="form-hint">可选，支持同时选择多个文件</span>
         </div>

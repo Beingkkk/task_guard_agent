@@ -51,7 +51,12 @@ class TaskCard {
       <div class="task-card-header">
         <div class="task-card-title"></div>
         <div class="task-card-actions">
-          <button class="btn-icon btn-delete" title="注销任务">🗑️</button>
+          <button class="btn-icon btn-delete" title="注销任务">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
         </div>
       </div>
       <div class="task-card-meta">
@@ -97,7 +102,7 @@ class TaskCard {
     el.dataset.alias = alias;
 
     const pid = this.task.pid || this.task.registered?.pid || '-';
-    this._els.pid.textContent = `🆔 PID: ${pid}`;
+    this._els.pid.textContent = `PID: ${pid}`;
 
     let logPath = '-';
     if (this.task.log_source?.path) {
@@ -105,7 +110,7 @@ class TaskCard {
     } else if (this.task.registered?.log_source?.paths) {
       logPath = this.task.registered.log_source.paths[0]?.split('\\').pop() || '-';
     }
-    this._els.logPath.textContent = `📁 ${logPath}`;
+    this._els.logPath.textContent = logPath;
 
     // Events — bound once forever
     el.addEventListener('click', (e) => {
@@ -217,7 +222,7 @@ class TaskCard {
     return `
       <div class="log-preview">
         <div class="log-preview-label">最近日志</div>
-        <div class="log-line log-loading">⏳ 正在同步历史数据…</div>
+        <div class="log-line log-loading">正在同步历史数据…</div>
       </div>
     `;
   }

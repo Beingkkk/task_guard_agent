@@ -93,7 +93,18 @@ class TaskDetailPanel {
   show(alias) {
     this.currentAlias = alias;
     this.messages = [];
-    if (this.historyEl) this.historyEl.innerHTML = '';
+    if (this.historyEl) {
+      this.historyEl.innerHTML = '';
+      // Restore empty-state hint
+      const hint = document.createElement('div');
+      hint.className = 'ask-empty-hint';
+      hint.innerHTML = `
+        <div class="ask-empty-icon">💬</div>
+        <div class="ask-empty-title">与 AI 助手对话</div>
+        <div class="ask-empty-desc">输入问题，获取任务状态分析、异常排查建议</div>
+      `;
+      this.historyEl.appendChild(hint);
+    }
     if (this.titleEl) this.titleEl.textContent = alias;
 
     this.panel?.classList.remove('hidden');
@@ -228,7 +239,7 @@ class TaskDetailPanel {
     // Action buttons row: open + change
     html += '<div class="detail-log-actions">';
     if (logInfo?.path) {
-      const btnLabel = logInfo.type === 'dir' ? '📁 打开日志目录' : '📄 用记事本打开';
+      const btnLabel = logInfo.type === 'dir' ? '打开日志目录' : '用记事本打开';
       html += `<button class="btn btn-sm btn-secondary" data-action="open-log" data-path="${this._escapeHtml(logInfo.path)}">${btnLabel}</button>`;
     }
     html += `<button class="btn btn-sm btn-link" data-action="change-log">更换日志路径</button>`;
@@ -437,6 +448,10 @@ class TaskDetailPanel {
 
   _addMessage(role, content) {
     if (!this.historyEl) return '';
+
+    // Hide empty-state hint on first message
+    const emptyHint = this.historyEl.querySelector('.ask-empty-hint');
+    if (emptyHint) emptyHint.style.display = 'none';
 
     const id = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     const el = document.createElement('div');

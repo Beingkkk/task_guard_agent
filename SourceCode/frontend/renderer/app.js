@@ -420,7 +420,7 @@
 
     wsService.on('task.alert', (data) => {
       showToast(
-        `⚠️ ${data?.alias}: ${data?.message || data?.rule || '告警'}`,
+        `[告警] ${data?.alias}: ${data?.message || data?.rule || '告警'}`,
         'error',
         5000
       );
@@ -428,7 +428,7 @@
 
     wsService.on('task.oom', (data) => {
       showToast(
-        `🔴 ${data?.alias}: 进程异常退出 / OOM`,
+        `[异常退出] ${data?.alias}: 进程异常退出 / OOM`,
         'error',
         8000
       );

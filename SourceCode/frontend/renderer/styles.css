@@ -1281,6 +1281,20 @@ body.maximized .titlebar {
   box-shadow: var(--shadow-modal);
   z-index: 1;
   border: 1px solid var(--border-color);
+  border-left: 2px solid var(--accent);
+}
+
+/* Top warm highlight line */
+.modal-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-medium), transparent);
+  pointer-events: none;
+  opacity: 0.8;
 }
 
 .modal-header {
@@ -1289,6 +1303,7 @@ body.maximized .titlebar {
   align-items: center;
   padding: var(--gap);
   border-bottom: 1px solid var(--border-color);
+  gap: 12px;
 }
 
 .modal-header h2 {
@@ -1296,6 +1311,19 @@ body.maximized .titlebar {
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-header h2::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-strong);
 }
 
 .modal-body {
@@ -1403,10 +1431,8 @@ body.maximized .titlebar {
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 1.5rem;
   cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
+  padding: 0;
   border-radius: var(--border-radius-xs);
   transition: all 0.15s ease;
   width: 32px;
@@ -1414,7 +1440,12 @@ body.maximized .titlebar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.btn-close svg {
+  width: 18px;
+  height: 18px;
 }
 
 .btn-close:hover {

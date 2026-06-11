@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from taskguard.config_loader import AppConfig, ConfigLoader, LLMConfig
+from taskguard.config_loader import AppConfig, ConfigLoader, CrashConfig, LLMConfig
 
 
 class TestConfigLoader:
@@ -44,6 +44,10 @@ class TestConfigLoader:
         assert cfg.llm.min_interval == 30
         assert cfg.llm.max_log_lines == 40
         assert cfg.llm.regex_threshold == 0.7
+        assert isinstance(cfg.crash, CrashConfig)
+        assert cfg.crash.max_dumps == 10
+        assert cfg.crash.log_lines == 500
+        assert cfg.crash.metrics_minutes == 10
 
     def test_model_fallback_to_json(self, tmp_path: Path) -> None:  # type: ignore[name-defined]
         config_dir = tmp_path
@@ -83,3 +87,26 @@ class TestAppConfigDefaults:
         assert llm.min_interval == 60
         assert llm.max_log_lines == 50
         assert llm.regex_threshold == 0.6
+
+    def test_crash_defaults(self) -> None:
+        crash = CrashConfig()
+        assert crash.max_dumps == 10
+        assert crash.log_lines == 500
+        assert crash.metrics_minutes == 10
+
+    def test_crash_config_override(self, tmp_path: Path) -> None:  # type: ignore[name-defined]
+        config_dir = tmp_path
+        config_yaml = {
+            "crash": {
+                "max_dumps": 5,
+                "log_lines": 200,
+                "metrics_minutes": 5,
+            },
+        }
+        (config_dir / "config.yaml").write_text(yaml.dump(config_yaml))
+        (config_dir / "config-claude.json").write_text(json.dumps({"auth_key": "k"}))
+
+        cfg = ConfigLoader.load(config_dir)
+        assert cfg.crash.max_dumps == 5
+        assert cfg.crash.log_lines == 200
+        assert cfg.crash.metrics_minutes == 5

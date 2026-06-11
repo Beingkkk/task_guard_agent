@@ -15,6 +15,7 @@ from taskguard.api.routes import setup_routes
 from taskguard.api.websocket import WebSocketManager, setup_websocket_routes
 from taskguard.collectors.file_collector import FileCollector
 from taskguard.config_loader import ConfigLoader
+from taskguard.crash.dumper import CrashDumper
 from taskguard.llm.factory import LLMConfig, create_provider
 from taskguard.storage.metrics_store import MetricsStore
 from taskguard.storage.task_store import TaskStore
@@ -96,6 +97,14 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
 
     harness = AgentHarness(store, metrics, collect_interval=collect_interval)
     harness.register_collector("file", FileCollector())
+
+    # Wire FR-6 crash handler
+    harness.crash_handler = CrashDumper(
+        data_dir=data_dir / "crash_dumps",
+        max_dumps=cfg.crash.max_dumps,
+        log_lines=cfg.crash.log_lines,
+        metrics_minutes=cfg.crash.metrics_minutes,
+    )
 
     # Wire FR-3 analyzer if LLM config is available
     try:

@@ -23,6 +23,15 @@ class LLMConfig:
 
 
 @dataclass
+class CrashConfig:
+    """Crash/OOM scene preservation configuration."""
+
+    max_dumps: int = 10
+    log_lines: int = 500
+    metrics_minutes: int = 10
+
+
+@dataclass
 class AppConfig:
     """Application configuration."""
 
@@ -30,6 +39,7 @@ class AppConfig:
     collect_interval: int = 30
     data_dir: Path = field(default_factory=lambda: Path("./data"))
     llm: LLMConfig = field(default_factory=LLMConfig)
+    crash: CrashConfig = field(default_factory=CrashConfig)
 
 
 class ConfigLoader:
@@ -46,6 +56,7 @@ class ConfigLoader:
             raw = yaml.safe_load(f) or {}
 
         llm_cfg = raw.get("llm", {})
+        crash_cfg = raw.get("crash", {})
 
         # Always load config-claude.json (only provider supported)
         claude_path = config_dir / "config-claude.json"
@@ -74,4 +85,9 @@ class ConfigLoader:
             collect_interval=raw.get("collect_interval", 30),
             data_dir=Path(raw.get("data_dir", "./data")),
             llm=llm,
+            crash=CrashConfig(
+                max_dumps=crash_cfg.get("max_dumps", 10),
+                log_lines=crash_cfg.get("log_lines", 500),
+                metrics_minutes=crash_cfg.get("metrics_minutes", 10),
+            ),
         )

@@ -54,7 +54,7 @@
   --bg-tertiary: var(--bg-card-hover);
 
   /* Layout */
-  --titlebar-height: 36px;
+  --titlebar-height: 44px;
   --statusbar-height: 40px;
   --gap: 16px;
   --left-panel-width: 380px;
@@ -135,14 +135,15 @@ body::before {
 }
 
 .titlebar-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: var(--border-radius-xs);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--border-radius-sm);
   pointer-events: none;
+  color: var(--accent);
 }
 
 .titlebar-text {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
   pointer-events: none;

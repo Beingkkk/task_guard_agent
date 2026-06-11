@@ -113,11 +113,11 @@ Title Bar (frameless, draggable)
 - `frontend/preload.js` — Exposes `window.electronAPI` with `apiGet/Post/Delete/Patch`, WebSocket listeners, window controls
 - `frontend/renderer/app.js` — App state, API calls, WebSocket event handlers, component coordination
 - `frontend/renderer/components/ProcessList.js` — Left panel: fetch `/api/processes`, search filter, selection
-- `frontend/renderer/components/TaskCard.js` — Card with status indicator, metrics, progress bar, log preview
+- `frontend/renderer/components/TaskCard.js` — **State-driven diff-update card**: DOM built once with cached refs, `update()` only mutates `textContent`/`className`. Events bound once at construction. Shows status indicator, metrics, progress, log preview.
 - `frontend/renderer/components/TaskGrid.js` — Grid container, empty-state toggle
-- `frontend/renderer/components/TaskDetailPanel.js` — Slide-out panel: task info + `/api/tasks/{alias}/ask` LLM chat
+- `frontend/renderer/components/TaskDetailPanel.js` — Slide-out panel: task info + recent logs + `/api/tasks/{alias}/ask` LLM chat
 
-**Removed:** bottom natural-language input bar, add-task modal (replaced by process-selection → watch dialog).
+**Removed:** bottom natural-language input bar, add-task modal, progress display in detail panel (replaced by recent logs).
 
 ## API Service
 
@@ -129,9 +129,10 @@ The Python backend runs an aiohttp server on `localhost:8080`:
 - `DELETE /api/tasks/{alias}` — unregister
 - `PATCH /api/tasks/{alias}` — modify task
 - `GET /api/tasks/{alias}/status` — comprehensive status (metadata + metrics + progress + logs)
+- `POST /api/tasks/batch-status` — **batch query status for multiple tasks** (body: `{aliases: [...]}`)
 - `GET /api/tasks/{alias}/alerts` — alert history
-- `POST /api/tasks/{alias}/ask` — **LLM Q&A about a specific task** (NEW)
-- `GET /api/processes` — **list all system processes** (name, PID, exe path) (NEW)
+- `POST /api/tasks/{alias}/ask` — **LLM Q&A about a specific task**
+- `GET /api/processes` — **list all system processes** (name, PID, exe path)
 - `POST /api/collect` — manual collection trigger
 - `POST /api/natural` — natural language intent parsing (backend retains; frontend no longer uses)
 
@@ -202,7 +203,7 @@ User-facing configuration lives in `SourceCode/config/` (tracked by git):
 
 ```
 config/
-├── config.yaml             # Agent main config (interval, thresholds, LLM, alerts, crash)
+├── config.yaml             # Agent main config (interval, concurrency, thresholds, LLM, alerts, crash)
 ├── config-claude.json      # Claude Provider config (auth_key, base_url, model_name)
 └── tasks.yaml              # Task definitions (loaded at boot, merged with JSON)
 ```
@@ -253,7 +254,7 @@ Python API Service (api/server.py)
 
 **Regex-before-LLM pipeline.** Progress extraction prefers regex templates for known tools (wget, rsync, aria2, curl). LLM extraction is a fallback triggered only when regex fails or confidence is low, and is rate-limited per-task (`llm_min_interval`). This is the primary cost-control mechanism.
 
-**定时驱动 + 顺序管道 + 属性注入点.** The `AgentHarness` runs a periodic collect cycle (default 30s): collects log deltas + process metrics → builds Snapshot → applies injection points (`analyzer`, `alerter`, `crash_handler`, `event_publisher`) → persists to SQLite. Collection, analysis, and alerting are sequential per-task to avoid state races. FR-3/5/6 extend behavior by assigning instances to Harness properties, not by modifying Harness code.
+**定时驱动 + 并发协程采集 + 属性注入点.** The `AgentHarness` runs a periodic collect cycle (default 30s). Each task is collected in its own coroutine, bounded by `collect_concurrency` (default 12, configurable via `config.yaml`): collects log deltas + process metrics → builds Snapshot → applies injection points (`analyzer`, `alerter`, `crash_handler`, `event_publisher`) → persists to SQLite. Per-task sequentiality is guaranteed by the single coroutine per task; cross-task concurrency is bounded by Semaphore. FR-3/5/6 extend behavior by assigning instances to Harness properties, not by modifying Harness code.
 
 **Event system for real-time updates.** `AgentHarness.event_publisher` broadcasts `task.updated`/`task.alert`/`task.oom` events after each collection cycle. The WebSocket manager subscribes to these events and forwards them to all connected frontend clients.
 
@@ -321,6 +322,7 @@ Cooldown: WARNING/INFO alerts suppressed for `alert_cooldown` (default 300s) per
 - `Document/spec.md` — Full functional spec (v1.0.0, 已发布)
 - `Document/constitution.md` — Python development constraints and SDD workflow mandate
 - `Document/adopt-baseline.md` — SDD v3.0 adoption baseline with tech debt tracking
+- `Document/changes/proposal-0004.md` — **Latest design change**: task-level concurrent collection + batch status API (IMPLEMENTED)
 - `SourceCode/pyproject.toml` — Single source of truth for dependencies. Dev deps: `pytest`, `pytest-asyncio`, `ruff`, `mypy`, `aiohttp`
 
 ### FR Completion Status

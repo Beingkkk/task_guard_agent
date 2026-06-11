@@ -40,7 +40,7 @@
 source SourceCode/python-runtime/Scripts/activate
 
 # 运行项目
-python -m taskguard.cli.main watch --help
+python -m taskguard.api.server
 ```
 
 ### 1.2 Python 版本

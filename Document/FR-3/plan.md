@@ -25,10 +25,10 @@ FR-3 本身不做异常判断、不发送告警，只完成"正则提取 → LLM
 
 - **数据模型扩展**：`ProgressInfo` 7 字段完整版（spec §4.3）
 - **SQLite 扩展**：`progress` 表 + `llm_usage` 表
-- **Provider 抽象层**：`BaseProvider` 接口 + `ClaudeProvider` + `OpenAIProvider`
+- **Provider 抽象层**：`BaseProvider` 接口 + `ClaudeProvider`（仅 Claude，OpenAIProvider 已移除）
 - **正则模板库**：`RegexExtractor` + 各工具模板（wget、rsync、aria2、curl）
 - **AnalyzerPipeline**：正则优先 → LLM fallback → cooldown 控制
-- **Config Loader**：`AppConfig` dataclass，读取 `config.yaml` + `config-claude.json` / `config-openai.json`（`llm.provider` 决定使用哪个）
+- **Config Loader**：`AppConfig` dataclass，读取 `config.yaml` + `config-claude.json`（仅 Claude，无 provider 选择）
 - **CLI 交互**：`watch` 命令无法识别工具时 interactive prompt
 - **数据持久化**：提取结果写入 `progress` 表，LLM 调用记录写入 `llm_usage` 表
 
@@ -65,11 +65,11 @@ FR-3 本身不做异常判断、不发送告警，只完成"正则提取 → LLM
 |---|---|---|
 | 语言版本 | Python 3.11+ | constitution §1.2 |
 | 运行时 | `SourceCode/python-runtime/` venv | constitution §1.1 |
-| Provider SDK | `anthropic` SDK (Claude) + `httpx` (OpenAI-compatible) | spec §4.2.3、用户确认 |
+| Provider SDK | `anthropic` SDK (Claude only) | spec §4.2.3、用户确认 |
 | 模型 | `kimi-for-coding`（默认） | 用户确认 |
 | LLM 输出格式 | tool use 强制 JSON schema | 用户确认 |
 | 正则 | Python `re` 模块 | 标准库 |
-| 配置格式 | YAML (`config.yaml`) + JSON (`config-claude.json` / `config-openai.json`) | spec §5 |
+| 配置格式 | YAML (`config.yaml`) + JSON (`config-claude.json`) | spec §5 |
 | 数据模型 | `dataclasses` | constitution §3.2、§4.1 |
 | 测试 | `pytest` + `pytest-asyncio` + `tmp_path` | constitution §8 |
 | 静态检查 | `ruff format/check`、`mypy --strict` | constitution §3.1、§3.2 |
@@ -85,7 +85,7 @@ FR-3 本身不做异常判断、不发送告警，只完成"正则提取 → LLM
 | §1.1 专用 venv | 所有命令在 `SourceCode/python-runtime` 下执行 |
 | §3.2 强制类型注解 | 所有 `BaseProvider` / `AnalyzerPipeline` / `RegexExtractor` 公开方法带完整类型 |
 | §3.3 命名规范 | 模块 `regex_extractor.py`、类 `AnalyzerPipeline`、函数 `analyze` |
-| §4.2 分层原则 | `analyzers/` 只调用 `llm/` 和 `models/`，不直接 import `collectors/`；`cli/` 通过 `tools/` 间接设置 `tool_hint` |
+| §4.2 分层原则 | `analyzers/` 只调用 `llm/` 和 `models/`，不直接 import `collectors/` |
 | §5.1 异步边界 | LLM 调用是网络 IO，用 `async/await`；Provider 内部同步 SDK 调用用 `asyncio.to_thread()` 包装 |
 | §6.1 异常分层 | LLM 调用失败 → 记录 ERROR，返回 `None`，不中断采集循环 |
 | §6.2 禁止裸 except | `except` 子句指定 `(anthropic.APIError, httpx.HTTPError, asyncio.TimeoutError)` 等 |
@@ -108,7 +108,7 @@ taskguard/
 │   ├── __init__.py               # MOD: 导出 BaseProvider / factory
 │   ├── base.py                   # NEW: BaseProvider, Message, ToolCall, ToolDefinition, LLMResponse, Usage
 │   ├── claude_provider.py        # NEW: ClaudeProvider (anthropic SDK)
-│   ├── openai_provider.py        # NEW: OpenAIProvider (httpx 手写)
+│   ~~├── openai_provider.py        # REMOVED: 项目仅支持 ClaudeProvider~~
 │   └── factory.py                # NEW: create_provider(config) -> BaseProvider
 ├── analyzers/
 │   ├── __init__.py               # MOD: 导出 AnalyzerPipeline, RegexExtractor
@@ -127,13 +127,10 @@ taskguard/
 ├── storage/
 │   ├── __init__.py               # MOD: 导出（无新增）
 │   └── metrics_store.py          # MOD: 新增 progress / llm_usage 表 + save_progress / save_llm_usage
-└── cli/
-    └── main.py                   # MOD: watch 命令增加 --tool 和 interactive prompt
-
 tests/
 ├── test_llm_base.py              # NEW: Message / ToolCall / LLMResponse 构造
 ├── test_llm_claude_provider.py   # NEW: ClaudeProvider mock 测试
-├── test_llm_openai_provider.py   # NEW: OpenAIProvider mock 测试
+│   ~~├── test_llm_openai_provider.py   # REMOVED: 与 OpenAIProvider 一同移除~~
 ├── test_llm_factory.py           # NEW: create_provider 配置解析
 ├── test_analyzers_regex.py       # NEW: RegexExtractor 单元测试
 ├── test_analyzers_pipeline.py    # NEW: AnalyzerPipeline 集成测试（mock provider）
@@ -150,16 +147,112 @@ tests/
 
 | # | 决策 | 选项对比 | 选择 | 理由 |
 |---|---|---|---|---|
-| AD-1 | Provider 协议抽象 | 单 SDK / 多 SDK / 统一接口 + 多实现 | 统一 `BaseProvider` + `ClaudeProvider` + `OpenAIProvider` | 参考 go-tiny-claw 设计；上层调用统一接口，内部做协议翻译 |
-| AD-2 | OpenAIProvider 实现 | `openai` Python SDK / `httpx` 手写 | `httpx` 手写 | 避免新增 heavy dep；OpenAI chat.completions 格式简单，httpx 足够；已有 `httpx>=0.27.0` |
+| AD-1 | Provider 协议抽象 | 单 SDK / 多 SDK / 统一接口 + 多实现 | 统一 `BaseProvider` + `ClaudeProvider` ~~+ `OpenAIProvider`~~ | 参考 go-tiny-claw 设计；上层调用统一接口。⚠️ OpenAIProvider 已在后续版本移除，仅保留 ClaudeProvider |
+| AD-2 | ~~OpenAIProvider 实现~~ | ~~`openai` Python SDK / `httpx` 手写~~ | ~~`httpx` 手写~~ | ~~已移除：项目仅支持 Claude（Anthropic SDK）~~ |
 | AD-3 | LLM 输出 JSON 方式 | tool use / prefill `{` + system prompt / `response_format` | tool use（`tools` 参数） | 稳定性最高，强制 schema 匹配；prefill 偶尔解析失败 |
 | AD-4 | 正则模板注册 | dict / dataclass / 插件系统 | `RegexTemplate` dataclass + 列表注册 | 足够扩展，测试友好，无插件系统开销 |
-| AD-5 | 工具识别策略 | 仅关键词 / 仅用户标注 / 关键词 + 标注 + 全尝试 | 关键词扫描 + `tool_hint` 用户标注；无法确认时 CLI 交互 | 兼顾自动化和准确率；file 模式无 command 时依赖标注 |
+| AD-5 | 工具识别策略 | 仅关键词 / 仅用户标注 / 关键词 + 标注 + 全尝试 | 关键词扫描 + `tool_hint` 用户标注 | 兼顾自动化和准确率；file 模式无 command 时依赖标注 |
 | AD-6 | progress 存储 | 扩 `metrics` 表 / 新表 | 新表 `progress` | 语义清晰，不将进程指标与进度分析结果混为一谈 |
 | AD-7 | `analyze()` 入参 | `(log_lines)` / `(task, snapshot)` | `(task, snapshot)` | 与 [agent.py:99](SourceCode/taskguard/agent.py#L99) 实现对齐；需要 `task.config.llm_min_interval`、`task.state` cooldown 记录 |
 | AD-8 | config loader 归属 | FR-3 / 独立 / 延后 | FR-3 | `AnalyzerPipeline`、`AgentHarness`、`Provider` 都需要配置；不建 loader 会导致各层直接读文件（越界） |
 | AD-9 | `max_log_lines` 取样 | 最后 50 / 去重后 50 / 首 25 + 末 25 | 最后 50 行（简单标准） | 用户确认；后续研究 `/compact` 类支持 |
 | AD-10 | Smoke Test LLM 部分 | 真实 API / 纯 mock | 纯 mock + 异常模拟 | 用户确认；以验证功能为主，不依赖网络 |
+
+---
+
+## 6.5 接口定义 (Interface Definitions)
+
+> SDD v3.0 强制要求：每个 plan 必须包含「接口定义」章节，明确模块间输入/输出契约。
+
+### 6.5.1 Provider 抽象层接口
+
+```python
+@dataclass(slots=True)
+class Message:
+    role: Literal["user", "assistant"]
+    content: str
+
+@dataclass(slots=True)
+class ToolDefinition:
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+@dataclass(slots=True)
+class ToolCall:
+    name: str
+    arguments: str  # JSON string
+
+@dataclass(slots=True)
+class LLMResponse:
+    content: str
+    tool_calls: list[ToolCall] | None = None
+    usage: dict[str, int] | None = None
+
+class BaseProvider(ABC):
+    async def complete(
+        self,
+        system: str | None = None,
+        messages: list[Message] | None = None,
+        tools: list[ToolDefinition] | None = None,
+    ) -> LLMResponse: ...
+```
+
+> **注**: 本项目仅支持 Claude（Anthropic SDK）。`OpenAIProvider` 已移除（参见 [[adopt-baseline.md|TD-1]]）。
+
+### 6.5.2 RegexExtractor 接口
+
+```python
+class RegexExtractor:
+    def __init__(self, templates: list[RegexTemplate] | None = None) -> None: ...
+    def extract(self, log_lines: list[str], tool_hint: str = "") -> ProgressInfo | None: ...
+    def register_template(self, template: RegexTemplate) -> None: ...
+
+@dataclass
+class RegexTemplate:
+    name: str
+    pattern: re.Pattern
+    confidence: float
+```
+
+### 6.5.3 AnalyzerPipeline 接口
+
+```python
+class AnalyzerPipeline:
+    def __init__(
+        self,
+        provider: BaseProvider,
+        regex_extractor: RegexExtractor,
+        llm_min_interval: int = 60,
+        max_log_lines: int = 50,
+        regex_threshold: float = 0.6,
+    ) -> None: ...
+
+    async def analyze(self, task: Task, snapshot: Snapshot) -> ProgressInfo | None: ...
+```
+
+**调用链**:
+```
+AgentHarness._collect_task()
+  → analyzer.analyze(task, snapshot)
+    → RegexExtractor.extract(snapshot.log_lines, task.config.tool_hint)
+      → [confidence >= threshold] → return ProgressInfo(extracted_by="regex")
+      → [confidence < threshold] → BaseProvider.complete() (LLM fallback)
+        → return ProgressInfo(extracted_by="llm")
+  → MetricsStore.save_progress(alias, timestamp, progress)
+```
+
+### 6.5.4 数据流
+
+日志增量（`snapshot.log_lines`）
+  → RegexExtractor 优先匹配
+    → 高置信度（≥ threshold）→ 直接返回 ProgressInfo，**跳过 LLM**
+    → 低置信度（< threshold）→ 检查 LLM cooldown
+      → cooldown 活跃 → 返回低置信度结果或 None
+      → cooldown 结束 → 调用 ClaudeProvider.complete()
+        → 成功 → 更新 `task.state["last_llm_call"]` → 返回 ProgressInfo
+        → 失败 → 返回 None
+  → 结果写入 `progress` 表 + `llm_usage` 表
 
 ---
 
@@ -303,32 +396,16 @@ class ClaudeProvider(BaseProvider):
         # 4. 反序列化为 LLMResponse
 ```
 
-### 8.3 `OpenAIProvider`
+### ~~8.3 `OpenAIProvider`~~（已移除）
 
-基于 `httpx` 手写 OpenAI chat.completions 协议。
+> ⚠️ **已移除**：项目仅支持 Claude（Anthropic SDK）。`OpenAIProvider` 不再实现。
 
-```python
-class OpenAIProvider(BaseProvider):
-    def __init__(self, api_key: str, model: str, base_url: str) -> None: ...
-
-    async def complete(self, system, messages, tools=None) -> LLMResponse:
-        # 1. Message / ToolDefinition -> OpenAI chat.completions JSON
-        # 2. httpx.post(f"{base_url}/chat/completions", json=..., headers={...})
-        # 3. 解析 response.choices[0].message (content / tool_calls)
-        # 4. 反序列化为 LLMResponse
-```
-
-> `OpenAIProvider` 的 tool 参数格式为 `{"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}`，与 Anthropic 的 `{"name": ..., "description": ..., "input_schema": ...}` 不同。翻译逻辑封装在 Provider 内部。
-
-### 8.4 `create_provider` 工厂
+### 8.3 `create_provider` 工厂
 
 ```python
 def create_provider(config: LLMConfig) -> BaseProvider:
-    if config.provider == "claude":
-        return ClaudeProvider(config.api_key, config.model, config.base_url)
-    if config.provider == "openai":
-        return OpenAIProvider(config.api_key, config.model, config.base_url)
-    raise ValueError(f"Unknown provider: {config.provider}")
+    # 项目仅支持 ClaudeProvider
+    return ClaudeProvider(config.api_key, config.model, config.base_url)
 ```
 
 ---
@@ -627,15 +704,13 @@ await self._metrics_store.save_snapshot(snapshot)
 | 数据模型 | `ProgressInfo` v2 构造、`TaskConfig.tool_hint` | 默认值、字段完整性、非法 status 的 mypy 检查 |
 | Provider schema | `Message` / `ToolCall` / `LLMResponse` 构造 | role 枚举、arguments bytes 类型 |
 | ClaudeProvider | 请求序列化、响应反序列化 | mock `anthropic.Client`，验证 messages.create 参数 |
-| OpenAIProvider | HTTP POST 参数、响应解析 | mock `httpx.AsyncClient`，验证 JSON payload |
-| Provider factory | `create_provider` 配置解析 | 正确 provider 类型、错误 provider 抛 ValueError |
+| Provider factory | `create_provider` 配置解析 | 返回 `ClaudeProvider`；无效配置抛 `ValueError` |
 | RegexExtractor | 各工具模板匹配 | wget 进度行 → `percentage=68.2, speed="12.5 MB/s"`；无匹配 → `None` |
 | RegexExtractor + tool_hint | 指定模板后只尝试该模板 | 提供 `"wget"` 时不尝试 rsync 模板 |
 | AnalyzerPipeline | fallback 逻辑、cooldown、阈值 | 正则高置信度 → 不触发 LLM；正则低置信度 + cooldown 过 → 触发 LLM；cooldown 内 → 跳过 LLM |
 | AnalyzerPipeline + mock provider | LLM 成功/失败/超时 | 成功 → 正确 ProgressInfo；失败 → `None`；超时 → `None` |
 | ConfigLoader | YAML + JSON 合并 | 字段覆盖优先级、缺失文件处理 |
 | MetricsStore 扩展 | `save_progress` / `save_llm_usage` / `query_progress` | 内存 SQLite，验证 schema 和查询 |
-| CLI interactive | `watch --tool wget` / prompt | mock `input()`，验证 `tool_hint` 写入 |
 | AgentHarness 集成 | analyzer 注入点 | mock AnalyzerPipeline，验证 `analyze(task, snapshot)` 被调用 |
 
 > 所有 Provider 测试使用 mock，不调用真实 API。Smoke Test 纯 mock + 异常模拟。
@@ -646,7 +721,6 @@ await self._metrics_store.save_snapshot(snapshot)
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| kimi API 格式与标准 OpenAI 有差异（如 tool_calls 字段名不同） | `OpenAIProvider` 解析失败 | 使用最小字段子集（`choices[0].message.content/tool_calls`），非标准字段走容错解析；异常时记录原始 response body |
 | LLM 输出非预期 JSON（tool use 模式下概率低） | `progress=None` 当次提取失效 | tool use 强制 schema；万不得已时 `except JSONDecodeError` 兜底 |
 | 正则模板覆盖不全 | 大量任务 fallback 到 LLM，成本上升 | 模板库可扩展（加模板只需新增 `analyzers/regex/*.py`）；LLM cooldown 控制频率 |
 | 50 行上下文不足以识别复杂进度 | LLM 误判 | v0.1 接受此限制；后续研究 `/compact` 类长上下文压缩 |
@@ -660,7 +734,7 @@ await self._metrics_store.save_snapshot(snapshot)
 
 详细任务清单见 [tasks.md](./tasks.md)。生成原则：
 
-1. **依赖分层**：数据模型 → Provider schema → Provider 实现 → Config Loader → RegexExtractor → AnalyzerPipeline → Storage 扩展 → CLI → 集成测试
+1. **依赖分层**：数据模型 → Provider schema → Provider 实现 → Config Loader → RegexExtractor → AnalyzerPipeline → Storage 扩展 → API → 集成测试
 2. **TDD 闭环**：每层测试任务排在实现任务之前
 3. **可并行标记 `[P]`**：跨文件、无相互依赖的任务可并行
 4. **每任务一文件**：明确文件路径，便于追踪
@@ -675,7 +749,7 @@ await self._metrics_store.save_snapshot(snapshot)
 | Phase 0 — 文档定稿 | ⬜ | plan.md / tasks.md 评审通过 |
 | Phase 1 — 数据模型与 Provider 测试 | ⬜ | T310~T313 全部完成且测试绿 |
 | Phase 2 — Regex 与 Pipeline 核心 | ⬜ | T320~T324 全部完成 |
-| Phase 3 — Config Loader 与 CLI | ⬜ | T330~T332 全部完成 |
+| Phase 3 — Config Loader | ⬜ | T330~T332 全部完成 |
 | Phase 4 — 集成与端到端 | ⬜ | T340~T341 全部完成 |
 | Phase 5 — 章程合规验证 | ⬜ | `ruff` / `mypy` / `pytest` 全绿 |
 

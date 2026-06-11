@@ -66,14 +66,14 @@ FR-4 本身不做采集、不做进度解析、不做告警规则判断，只负
 ### 2.3 验收标准 (Acceptance Criteria)
 
 **Phase 1（后端）**：
-- [ ] `python -m taskguard.api.server` 启动后，监听 `localhost:8080`
-- [ ] `GET /api/tasks` 返回所有任务列表（JSON）
-- [ ] `POST /api/tasks` 可注册新任务，成功后返回 201
-- [ ] `DELETE /api/tasks/{alias}` 可注销任务，成功后返回 204
-- [ ] `GET /api/tasks/{alias}/status` 返回任务综合状态（含最新指标、进度、最近日志）
-- [ ] WebSocket 连接建立后，AgentHarness 每采集周期自动推送 `task.updated` 事件
-- [ ] 自然语言输入 `POST /api/natural` 返回解析结果并执行对应操作
-- [ ] `pytest` 全绿，`ruff check .` / `mypy taskguard/` 无错误
+- [x] `python -m taskguard.api.server` 启动后，监听 `localhost:8080`
+- [x] `GET /api/tasks` 返回所有任务列表（JSON）
+- [x] `POST /api/tasks` 可注册新任务，成功后返回 201
+- [x] `DELETE /api/tasks/{alias}` 可注销任务，成功后返回 204
+- [x] `GET /api/tasks/{alias}/status` 返回任务综合状态（含最新指标、进度、最近日志）
+- [x] WebSocket 连接建立后，AgentHarness 每采集周期自动推送 `task.updated` 事件
+- [x] 自然语言输入 `POST /api/natural` 返回解析结果并执行对应操作
+- [x] `pytest` 全绿，`ruff check .` / `mypy taskguard/` 无错误
 
 **Phase 3（前端）**：
 - [x] Electron 应用可启动，显示卡片网格
@@ -183,6 +183,93 @@ frontend/                           # NEW: Electron 前端（Phase 3）
 | AD-6 | 前端技术栈 | React / Vue / 原生 HTML/JS | **原生 HTML/JS** | 最小依赖、最快启动、足够简单的界面；未来需要复杂状态管理时可迁移 |
 | AD-7 | 自然语言后端触发 | API 端点（`POST /api/natural`）/ WebSocket 消息 / 前端直接调 LLM | **API 端点** | 后端统一处理，复用现有 `IntentParser` 和 `ToolRegistry`；前端只需发送文本 |
 | AD-8 | 启动入口设计 | `cli/main.py` 重构 / 新建 `api/server.py` / 保留两者 | **新建 `api/server.py` 为主入口，简化 `cli/main.py`** | `server.py` 是生产入口；`main.py` 保留单命令调试（`watch/unwatch/list/status`）但不启动 shell |
+
+---
+
+## 6.5 接口定义 (Interface Definitions)
+
+> SDD v3.0 强制要求：每个 plan 必须包含「接口定义」章节，明确模块间输入/输出契约。
+
+### 6.5.1 APIServer 接口
+
+```python
+class APIServer:
+    def __init__(
+        self,
+        store: TaskStore,
+        metrics_store: MetricsStore,
+        harness: AgentHarness | None = None,
+    ) -> None: ...
+
+    async def start(self, host: str = "127.0.0.1", port: int = 8080) -> None: ...
+    async def stop(self) -> None: ...
+```
+
+### 6.5.2 EventPublisher 接口
+
+```python
+class EventPublisher:
+    async def publish(self, event_type: str, data: dict[str, Any]) -> None: ...
+```
+
+**事件类型契约**:
+
+| event_type | 触发时机 | data 字段 | 消费者 |
+|-----------|---------|----------|--------|
+| `task.updated` | 每次采集周期完成 | `{alias, timestamp, log_lines, metrics?, progress?, alerts?}` | WebSocket → 前端卡片更新 |
+| `task.alert` | alerter 产生 WARNING/CRITICAL | `{alias, rule, level, message, timestamp}` | WebSocket → 前端灯色/闪烁 |
+| `task.oom` | crash_handler 产生 dump | `{alias, dump_path, timestamp}` | WebSocket → 前端「查看现场」按钮 |
+
+### 6.5.3 REST API 路由契约
+
+| 方法 | 路径 | 输入 | 输出 | 状态码 |
+|------|------|------|------|--------|
+| GET | `/api/tasks` | — | `list[Task]` | 200 |
+| POST | `/api/tasks` | `Task` JSON body | `Task` | 201 |
+| PATCH | `/api/tasks/{alias}` | 部分字段 JSON | `Task` | 200 |
+| DELETE | `/api/tasks/{alias}` | — | — | 204 |
+| GET | `/api/tasks/{alias}/status` | — | 综合状态 dict | 200 |
+| GET | `/api/tasks/{alias}/alerts` | — | `list[Alert]` | 200 |
+| POST | `/api/collect` | — | 采集摘要 dict | 200 |
+| POST | `/api/natural` | `{text: str}` | 意图解析结果 | 200 |
+
+### 6.5.4 WebSocket 契约
+
+**连接**: `ws://localhost:8080/ws`
+
+**协议**: 自定义 JSON，前端连接后自动订阅所有事件。
+
+**消息格式**:
+```json
+{
+  "type": "task.updated | task.alert | task.oom",
+  "data": { /* 事件特定数据 */ }
+}
+```
+
+### 6.5.5 IntentParser 接口
+
+```python
+class IntentParser:
+    def __init__(self, provider: BaseProvider) -> None: ...
+
+    async def parse(self, text: str) -> dict[str, Any]:
+        """解析自然语言输入为结构化意图.
+
+        Returns: {"intent": "<tool_name>", "params": {...}}
+        """
+```
+
+### 6.5.6 数据流
+
+用户操作（前端）
+  → Electron IPC → Python API 路由
+    → ToolRegistry.get(name).execute(params)
+      → 具体 Tool 执行
+        → Storage / Harness 操作
+    → HTTP 响应 / WebSocket 事件推送
+      → Electron 主进程 → 渲染进程
+        → 前端 UI 更新
 
 ---
 
@@ -317,11 +404,37 @@ frontend/                           # NEW: Electron 前端（Phase 3）
   "data": {
     "alias": "下载A",
     "timestamp": "2026-05-29T08:00:30Z",
-    "metrics": { "cpu_percent": 12.5, ... },
-    "progress": { "percentage": 68.2, ... },
-    "log_lines": ["new line 1", "new line 2"]
+    "log_lines": ["new line 1", "new line 2"],
+    "metrics": {
+      "cpu_percent": 12.5,
+      "memory_working_set": 2147483648,
+      "memory_percent": 25.0,
+      "status": "running",
+      "exit_code": null
+    },
+    "progress": {
+      "percentage": 68.2,
+      "speed": "5.2 MB/s",
+      "eta": "00:03:12",
+      "status": "running",
+      "raw_summary": "68.2% 5.2 MB/s ETA 00:03:12",
+      "confidence": 0.95,
+      "extracted_by": "regex"
+    },
+    "alerts": [
+      {
+        "rule": "cpu_high",
+        "level": "WARNING",
+        "message": "CPU 持续 95% 超过 5 分钟",
+        "timestamp": "2026-05-29T08:00:30Z"
+      }
+    ]
   }
 }
+
+// 注：metrics 字段在 process_info 为 None 时省略；
+//     progress 字段在 analyzer 未返回结果时省略；
+//     alerts 字段在无告警时省略（空列表不发）。
 
 // task.alert — 告警触发
 {
@@ -397,13 +510,40 @@ WebSocket 管理器订阅所有事件类型，收到后广播给所有连接。
 ```python
 # 发布事件（注入点-4）
 if self.event_publisher is not None:
-    await self.event_publisher.publish("task.updated", {
+    event_data: dict[str, Any] = {
         "alias": task.alias,
         "timestamp": snapshot.timestamp.isoformat(),
-        "metrics": snapshot.process.to_dict() if snapshot.process else None,
-        "progress": snapshot.progress.to_dict() if snapshot.progress else None,
         "log_lines": snapshot.log_lines,
-    })
+    }
+    if snapshot.process is not None:
+        event_data["metrics"] = {
+            "cpu_percent": snapshot.process.cpu_percent,
+            "memory_working_set": snapshot.process.memory_working_set,
+            "memory_percent": snapshot.process.memory_percent,
+            "status": snapshot.process.status,
+            "exit_code": snapshot.process.exit_code,
+        }
+    if snapshot.progress is not None:
+        event_data["progress"] = {
+            "percentage": snapshot.progress.percentage,
+            "speed": snapshot.progress.speed,
+            "eta": snapshot.progress.eta,
+            "status": snapshot.progress.status,
+            "raw_summary": snapshot.progress.raw_summary,
+            "confidence": snapshot.progress.confidence,
+            "extracted_by": snapshot.progress.extracted_by,
+        }
+    if snapshot.alerts:
+        event_data["alerts"] = [
+            {
+                "rule": a.rule,
+                "level": a.level,
+                "message": a.message,
+                "timestamp": a.timestamp.isoformat(),
+            }
+            for a in snapshot.alerts
+        ]
+    await self.event_publisher.publish("task.updated", event_data)
 ```
 
 ### 8.4 WebSocket 管理器（`api/websocket.py`）

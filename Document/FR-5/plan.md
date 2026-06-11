@@ -99,6 +99,105 @@ class Rule(Protocol):
 
 ---
 
+## 3.5 接口定义 (Interface Definitions)
+
+> SDD v3.0 强制要求：每个 plan 必须包含「接口定义」章节，明确模块间输入/输出契约。
+
+### 3.5.1 AlertEngine 接口
+
+```python
+class AlertEngine:
+    def __init__(
+        self,
+        rules: list[Rule] | None = None,
+        cooldown_seconds: int = 300,
+        escalation_seconds: int = 1800,
+    ) -> None: ...
+
+    async def evaluate(self, task: Task, snapshot: Snapshot) -> list[Alert]: ...
+
+    async def evaluate_and_persist(
+        self,
+        task: Task,
+        snapshot: Snapshot,
+        metrics_store: MetricsStore | None = None,
+    ) -> list[Alert]: ...
+```
+
+### 3.5.2 Rule 接口
+
+```python
+class Rule:
+    name: str
+    description: str
+    async def evaluate(
+        self,
+        task: Task,
+        snapshot: Snapshot,
+        metrics_store: MetricsStore | None = None,
+    ) -> Alert | None: ...
+```
+
+### 3.5.3 Alert 数据模型
+
+```python
+@dataclass(slots=True)
+class Alert:
+    rule: str              # 规则名
+    level: Literal["INFO", "WARNING", "CRITICAL"]
+    message: str
+    timestamp: datetime    # UTC
+    snapshot: dict[str, Any] = field(default_factory=dict)
+```
+
+### 3.5.4 注入点契约
+
+```python
+class AgentHarness:
+    alerter: AlertEngine | None = None   # FR-5 填充
+```
+
+**调用链**:
+```
+AgentHarness._collect_task()
+  → metrics_store.save_snapshot(snapshot)
+  → alerter.evaluate_and_persist(task, snapshot, metrics_store)
+    → [per rule] Rule.evaluate(task, snapshot, metrics_store)
+      → [triggers] Alert | None
+    → apply_cooldown(alerts) → list[Alert]
+    → apply_escalation(alerts) → list[Alert]
+    → snapshot.alerts = results
+    → [per alert] metrics_store.save_alert(alias, alert)
+  → event_publisher.publish("task.updated", ...)  # alerts 已附着
+  → [if alerts] event_publisher.publish("task.alert", ...)  # 每条 alert 独立事件
+```
+
+### 3.5.5 降噪机制接口（行为契约）
+
+| 机制 | 输入 | 行为 | 输出 |
+|------|------|------|------|
+| Cooldown | `(alias, rule)` + `cooldown_seconds` | 同一 (alias, rule) 在冷却期内重复触发 → 抑制 | 被抑制的 alert 不返回 |
+| Escalation | `(alias, rule)` + `escalation_seconds` | WARNING 持续超过阈值 → 升级为 CRITICAL | 级别变更为 CRITICAL |
+| 恢复检测 | 规则不再触发 | 清除 (alias, rule) 的 cooldown 和 escalation 状态 | 无输出 |
+
+**特殊规则**: CRITICAL 级别告警** bypass cooldown**（始终触发）。
+
+### 3.5.6 内置规则清单
+
+| 规则名 | 条件 | 默认阈值 | 级别 | 依赖 |
+|--------|------|---------|------|------|
+| `process_exited` | status == "exited" | — | CRITICAL | FR-2 |
+| `not_responding` | status == "not_responding" | — | WARNING | FR-2 |
+| `memory_critical` | memory_percent > 95% | — | CRITICAL | FR-2 |
+| `memory_high` | memory_percent > 80% 持续 3min | 80%, 180s | WARNING | FR-2 + metrics_store |
+| `cpu_high` | cpu_percent > 90% 持续 5min | 90%, 300s | WARNING | FR-2 + metrics_store |
+| `log_error_keyword` | log 匹配 ERROR/FATAL/Exception | — | WARNING | FR-2 |
+| `progress_error` | progress.status == "error" | — | WARNING | FR-3 |
+| `log_stalled` | 文件无增长 > stalled_threshold | 300s | WARNING | FR-2 |
+| `progress_stalled` | percentage 10min 无变化 | 600s | WARNING | FR-2 + metrics_store |
+
+---
+
 ## 4. 规则定义
 
 | 规则名 | 条件 | 默认阈值 | 级别 | 依赖 |

@@ -77,6 +77,78 @@ FR-2 本身不做进度解析、不做异常判断、不发送告警，只完成
 >
 > **配置边界**：FR-2 的 `AgentHarness` 通过构造函数接收 `collect_interval` 等参数，配置文件解析在更上层完成。这样 `agent.py` 保持纯净（不依赖 YAML/JSON 解析），也方便测试时直接注入 mock 值。
 
+> 不引入新依赖。
+
+---
+
+## 6.5 接口定义 (Interface Definitions)
+
+> SDD v3.0 强制要求：每个 plan 必须包含「接口定义」章节，明确模块间输入/输出契约。
+> 本 plan 的详细 AgentHarness 接口见 §10.3。
+
+### 6.5.1 BaseCollector 接口
+
+```python
+class BaseCollector(ABC):
+    @abstractmethod
+    async def collect_logs(self, task: Task) -> list[str]: ...
+    @abstractmethod
+    async def close(self) -> None: ...
+```
+
+### 6.5.2 AgentHarness 核心接口
+
+```python
+class AgentHarness:
+    def __init__(
+        self,
+        store: TaskStore,
+        metrics_store: MetricsStore,
+        collect_interval: int = 30,
+    ) -> None: ...
+
+    def register_collector(self, source_type: str, collector: BaseCollector) -> None: ...
+
+    # 注入点（后续 FR 通过属性赋值接入）
+    analyzer: AnalyzerPipeline | None = None       # FR-3 填充
+    alerter: AlertEngine | None = None             # FR-5 填充
+    crash_handler: CrashDumper | None = None       # FR-6 填充
+
+    async def run(self) -> None: ...       # 阻塞，直到 shutdown()
+    def shutdown(self) -> None: ...        # 触发优雅关闭
+    async def run_once(self) -> None: ...  # 单周期采集（测试用）
+```
+
+### 6.5.3 ProcessCollector 接口
+
+```python
+class ProcessCollector:
+    async def collect(self, pid: int | None) -> ProcessInfo | None: ...
+```
+
+### 6.5.4 MetricsStore 核心接口
+
+```python
+class MetricsStore:
+    async def open(self) -> None: ...
+    async def close(self) -> None: ...
+    async def save_snapshot(self, snapshot: Snapshot) -> None: ...
+    async def query_logs(self, alias, since, until?) -> list[dict]: ...
+    async def query_metrics(self, alias, since, until?) -> list[dict]: ...
+```
+
+### 6.5.5 数据流
+
+```
+AgentHarness.run_once()
+  → [per task] _collect_task(task)
+    → FileCollector.collect_logs(task) → list[str] (log_lines)
+    → ProcessCollector.collect(task.pid) → ProcessInfo | None
+    → build Snapshot(task_alias, log_lines, process)
+    → metrics_store.save_snapshot(snapshot)
+  → [next task] ...
+```
+
 ---
 
 ## 4. 章程合规性检查 (Constitution Check)

@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TaskGuard is a Windows desktop monitoring app (Electron + Python) that watches long-running processes, collects log progress and system resource metrics, and alerts via GUI visual indicators (red cards, flashing on OOM). It supports natural language input and preserves crash/OOM scene information.
 
-- **Frontend**: Electron + HTML/JS/CSS (Phase 3 complete)
+- **Frontend**: Electron + HTML/JS/CSS with custom titlebar (frameless, draggable)
 - **Backend**: Python 3.11 + aiohttp (REST API + WebSocket)
 - **Packaging**: pyinstaller (Python) + electron-builder (Electron) → single `.exe`
+- **CLI**: **Completely removed** — the desktop app is the only entry point
 
 Source code lives in `SourceCode/`. Project docs (spec, constitution, FR plans) live in `Document/`.
 
@@ -26,28 +27,24 @@ source SourceCode/python-runtime/Scripts/activate
 # Install dependencies (must be inside SourceCode/)
 cd SourceCode
 pip install -e ".[dev]"
+
+# Install frontend dependencies
+cd frontend
+npm install
 ```
 
 > If `ruff`/`mypy`/`pytest` are not found after activation, they were likely installed into a conda environment instead of the project venv. Use the full path or reinstall with the project venv's pip.
 
 ## Common Commands
 
-All commands run from `SourceCode/` with the venv activated.
+All Python commands run from `SourceCode/` with the venv activated.
 
 ```bash
 # Start the API server (primary entry point)
 python -m taskguard.api.server
 
-# CLI single-command mode (debug only; does NOT start the API server)
-taskguard watch <alias> --log <path> [--pid <pid>]
-taskguard unwatch <alias>
-taskguard list
-taskguard status <alias>
-
 # Start Electron GUI (dev mode)
 cd frontend && npx electron . --dev
-# Or use the convenience script from SourceCode/
-.\start-gui.cmd
 
 # Lint and format
 ruff format .
@@ -72,7 +69,22 @@ pytest tests/test_api_*.py -v
 
 # Run FR-5 tests only (alert layer)
 pytest tests/test_models_alert.py tests/test_alerters_*.py tests/test_storage_metrics_alerts.py -v
+
+# Run FR-6 tests only (crash layer)
+pytest tests/test_crash_dumper.py tests/test_models_crashdump.py -v
 ```
+
+### Build (Production)
+
+```powershell
+# One-click build (Windows)
+cd SourceCode
+.\build.cmd
+```
+
+This runs `scripts/build_all.py` which:
+1. Builds Python backend with PyInstaller → `dist/backend/`
+2. Builds Electron frontend with electron-builder → `dist/electron/`
 
 ## API Service
 
@@ -84,33 +96,49 @@ The Python backend runs an aiohttp server on `localhost:8080`:
 
 The Electron frontend connects to this server via HTTP + WebSocket. The main process spawns the Python backend as a child process.
 
-## FR Planning Documents (SDD)
+## SDD (Spec-Driven Development)
 
-The project strictly follows **SDD (Spec-Driven Development)**. Every feature must go through: requirements analysis → decomposition → design → task planning → coding → testing → feedback → deployment. Skipping planning documents is prohibited.
+The project strictly follows **SDD v3.0**. All completed FR plans are **locked** — any change must go through the proposal workflow.
 
-Each FR has a planning directory under `Document/FR-<N>/`:
+### Document Structure
 
-- `Document/spec.md` — Full functional spec. Any code change involving FRs must reference the FR number in commits/PRs via `Relates-to: FR-N`.
-- `Document/constitution.md` — Python development constraints **and** SDD workflow mandate.
-- `Document/FR-<N>/plan.md` — Technical plan: scope, data model, API contracts, architecture decisions (AD-N), risks, Smoke Test script.
-- `Document/FR-<N>/tasks.md` — TDD task breakdown with dependency graph, `[P]` parallel markers, and exit criteria.
+```
+Document/
+├── constitution.md              # Python dev constraints + SDD workflow mandate
+├── spec.md                      # Full functional spec (v1.0.0, 已发布)
+├── adopt-baseline.md            # Brownfield SDD adoption baseline v1.0.0
+├── FR-<N>/
+│   ├── plan.md                  # Technical plan (locked after completion)
+│   └── tasks.md                 # TDD task breakdown
+├── changes/
+│   ├── README.md                # Change proposal workflow
+│   └── proposal-{NNNN}.md       # Active/implemented change proposals
+├── design/
+│   └── interface-contracts.md   # Cross-plan interface contracts (auto-generated)
+└── adr/                         # Architecture Decision Records
+```
 
-**SDD workflow in practice:**
-1. Extract FR from `spec.md` → define acceptance criteria
-2. Write `plan.md` (data model + contracts) before any code
-3. Write `tasks.md` with red tests first → implementation → integration
-4. Commit only when `pytest + ruff + mypy` all pass
-5. FR exit: Smoke Test passes + static checks green
+### Change Workflow
 
-If implementation diverges from spec, write an ADR in `Document/adr/` and note it at the top of the affected `tasks.md`.
+All changes to locked plans/spec must follow:
 
-**Commit convention** (Conventional Commits):
+1. **`/sdd-propose`** — Create `Document/changes/proposal-{NNNN}.md`
+   - Types: Type-A (需求变更), Type-B (设计变更), Type-C (代码缺陷), Type-D (技术债)
+   - Must include `[ADDED]`/`[MODIFIED]`/`[REMOVED]` markers
+   - Type-D requires root cause classification (Plan 缺失 / Plan 偏差 / 执行偏差 / 外部变化)
+2. **`/sdd-implement`** — Implement, mark APPROVED → IMPLEMENTED
+3. **`/sdd-verify`** — Consistency verification across 8 dimensions
+4. **`/sdd-archive`** — Merge into spec/plan, move proposal to `archive/`
+
+### Commit Convention
+
 ```
 <type>(<scope>): <description>
 
 Relates-to: FR-N
 ```
-Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Scopes: `collectors`, `analyzers`, `alerters`, `llm`, `tools`, `cli`, `models`, `storage`, `api`, `agent`, `gui`.
+
+Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Scopes: `collectors`, `analyzers`, `alerters`, `llm`, `tools`, `models`, `storage`, `api`, `agent`, `gui`.
 
 ## Data Layout
 
@@ -118,7 +146,7 @@ User-facing configuration lives in `SourceCode/config/` (tracked by git):
 
 ```
 config/
-├── config.yaml             # Agent main config (interval, thresholds, LLM, alerts)
+├── config.yaml             # Agent main config (interval, thresholds, LLM, alerts, crash)
 ├── config-claude.json      # Claude Provider config (auth_key, base_url, model_name)
 └── tasks.yaml              # Task definitions (loaded at boot, merged with JSON)
 ```
@@ -131,7 +159,7 @@ Runtime data lives in `SourceCode/data/` (gitignored):
 data/
 ├── tasks_state.json     # Task registry (JSON, versioned, atomic writes via os.replace)
 ├── metrics.db           # SQLite time-series: logs / metrics / progress / llm_usage / alerts
-├── crash_dumps/         # OOM scene dumps (FR-6+ — not yet implemented)
+├── crash_dumps/         # OOM scene dumps (FR-6, preserved by CrashDumper)
 └── taskguard.log        # API server log output
 ```
 
@@ -143,6 +171,8 @@ The backend follows a **layered + event-driven** architecture:
 
 ```
 Electron Frontend (Renderer)
+  ↕ IPC
+electronAPI (preload.js)
   ↕ IPC
 Electron Main Process (main.js)
   ↕ HTTP / WebSocket
@@ -223,8 +253,9 @@ Cooldown: WARNING/INFO alerts suppressed for `alert_cooldown` (default 300s) per
 
 ### Important Files
 
-- `Document/spec.md` — Full functional spec (v0.4, Electron GUI architecture)
+- `Document/spec.md` — Full functional spec (v1.0.0, 已发布)
 - `Document/constitution.md` — Python development constraints and SDD workflow mandate
+- `Document/adopt-baseline.md` — SDD v3.0 adoption baseline with tech debt tracking
 - `SourceCode/pyproject.toml` — Single source of truth for dependencies. Dev deps: `pytest`, `pytest-asyncio`, `ruff`, `mypy`, `aiohttp`
 
 ### FR Completion Status
@@ -232,9 +263,9 @@ Cooldown: WARNING/INFO alerts suppressed for `alert_cooldown` (default 300s) per
 - **FR-1** (Task registry, ToolRegistry, find_process, revise mode) — Complete
 - **FR-2** (Periodic collection: FileCollector, ProcessCollector, MetricsStore, AgentHarness) — Complete
 - **FR-3** (AnalyzerPipeline with regex + LLM fallback, Claude only) — Complete; assigned to `AgentHarness.analyzer`
-- **FR-4** (Electron GUI + aiohttp API + WebSocket + EventPublisher) — Phase 1 (backend API) and Phase 3 (Electron frontend) complete; Phase 4 (packaging) pending
+- **FR-4** (Electron GUI + aiohttp API + WebSocket + EventPublisher) — Phase 1 (backend API) and Phase 3 (Electron frontend) complete; Phase 4 (packaging) has `build.cmd`
 - **FR-5** (AlertEngine with 9 rules, cooldown/escalation, alerts API) — Complete; assigned to `AgentHarness.alerter`
-- **FR-6** (CrashDumper for OOM scene preservation) — Not started; assign to `AgentHarness.crash_handler`
+- **FR-6** (CrashDumper for OOM scene preservation) — Complete; assigned to `AgentHarness.crash_handler`
 - **FR-7+** — See `Document/spec.md`
 
 ## CodeGraph

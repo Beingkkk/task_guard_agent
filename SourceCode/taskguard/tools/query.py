@@ -3,6 +3,7 @@
 Relates-to: FR-1, FR-4
 """
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -105,3 +106,43 @@ class QueryStatusTool(BaseTool):
                 pass
 
         return ToolResult(ok=True, data=result)
+
+
+class QueryBatchStatusTool(BaseTool):
+    """Query unified status for multiple tasks in parallel."""
+
+    name = "query_batch_status"
+    description = "Query status for multiple tasks at once"
+
+    def __init__(
+        self,
+        store: TaskStore | None = None,
+        metrics_store: MetricsStore | None = None,
+        concurrency: int = 12,
+    ) -> None:
+        self._store = store
+        self._metrics_store = metrics_store
+        self._concurrency = max(1, concurrency)
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        if self._store is None:
+            raise RuntimeError("No TaskStore available for query_batch_status")
+
+        aliases = params.get("aliases", [])
+        if not isinstance(aliases, list) or not aliases:
+            return ToolResult(ok=True, data={"tasks": []})
+
+        query_tool = QueryStatusTool(self._store, self._metrics_store)
+        semaphore = asyncio.Semaphore(self._concurrency)
+
+        async def _query_one(alias: str) -> dict[str, Any]:
+            async with semaphore:
+                result = await query_tool.execute(
+                    {"alias": alias, "_store": self._store, "_metrics_store": self._metrics_store}
+                )
+                if result.ok and isinstance(result.data, dict):
+                    return result.data
+                return {"alias": alias, "error": result.error_code or "query_failed"}
+
+        tasks_data = await asyncio.gather(*(_query_one(str(a)) for a in aliases))
+        return ToolResult(ok=True, data={"tasks": list(tasks_data)})

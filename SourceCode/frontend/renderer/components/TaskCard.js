@@ -2,12 +2,15 @@
  * TaskCard Component
  * Relates-to: FR-4
  *
- * Renders a single task card with status indicator, metrics, progress, and logs.
+ * Renders a single task card with status indicator, metrics, and logs.
+ * Progress (if any) is shown as compact text, not a bar.
+ * Clicking the card opens the detail panel; delete button removes the task.
  */
 
 class TaskCard {
-  constructor(task, onDelete) {
+  constructor(task, onClick, onDelete) {
     this.task = task;
+    this.onClick = onClick;
     this.onDelete = onDelete;
     this.element = null;
     this._render();
@@ -17,8 +20,8 @@ class TaskCard {
    * Determine card status class based on task data.
    */
   _getStatusClass(data) {
-    const metrics = data?.latest_metrics;
-    const progress = data?.latest_progress;
+    const metrics = data?.latest_metrics || data?.metrics;
+    const progress = data?.latest_progress || data?.progress;
 
     // Critical: process exited or OOM
     if (metrics?.status === 'exited' || metrics?.status === 'oom') {
@@ -47,16 +50,35 @@ class TaskCard {
     return '';
   }
 
+  /**
+   * Normalize logs field: handles both {lines: [...], entry_count: N} (from
+   * query_status) and plain [...] (from WebSocket) formats.
+   */
+  _getLogsArray(data) {
+    const logs = data.recent_logs || data.log_lines || [];
+    if (logs && typeof logs === 'object' && !Array.isArray(logs)) {
+      return logs.lines || [];
+    }
+    return Array.isArray(logs) ? logs : [];
+  }
+
   _render() {
     const data = this.task;
     const statusClass = this._getStatusClass(data);
     const alias = data.alias || data.registered?.alias || 'Unknown';
-    const pid = data.registered?.pid || data.pid || '-';
-    const logPaths = data.registered?.log_source?.paths ||
-      (data.log_source?.paths ? data.log_source.paths : ['-']);
+    const pid = data.pid || data.registered?.pid || '-';
+
+    // Handle both log_source formats: query_status returns {type,path,extensions}
+    let logPath = '-';
+    if (data.log_source?.path) {
+      logPath = data.log_source.path.split('\\').pop() || data.log_source.path;
+    } else if (data.registered?.log_source?.paths) {
+      logPath = data.registered.log_source.paths[0]?.split('\\').pop() || '-';
+    }
+
     const metrics = data.latest_metrics || data.metrics || {};
     const progress = data.latest_progress || data.progress || null;
-    const recentLogs = data.recent_logs || data.log_lines || [];
+    const recentLogs = this._getLogsArray(data);
 
     const el = document.createElement('div');
     el.className = `task-card ${statusClass}`;
@@ -71,7 +93,7 @@ class TaskCard {
       </div>
       <div class="task-card-meta">
         <span>🆔 PID: ${pid}</span>
-        <span>📁 ${this._escapeHtml(logPaths[0]?.split('\\').pop() || logPaths[0] || '-')}</span>
+        <span>📁 ${this._escapeHtml(logPath)}</span>
       </div>
       <div class="metrics-grid">
         <div class="metric-item">
@@ -87,13 +109,19 @@ class TaskCard {
           <div class="metric-value ${metrics.status ? 'status-' + metrics.status : ''}">${metrics.status || '-'}</div>
         </div>
         <div class="metric-item">
-          <div class="metric-label">退出码</div>
-          <div class="metric-value">${metrics.exit_code !== undefined && metrics.exit_code !== null ? metrics.exit_code : '-'}</div>
+          <div class="metric-label">内存%</div>
+          <div class="metric-value">${metrics.memory_percent !== undefined ? metrics.memory_percent.toFixed(1) + '%' : '-'}</div>
         </div>
       </div>
       ${this._renderProgress(progress)}
       ${this._renderLogs(recentLogs)}
     `;
+
+    // Click card to open detail
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-delete')) return;
+      if (this.onClick) this.onClick(alias);
+    });
 
     // Bind delete button
     const deleteBtn = el.querySelector('.btn-delete');
@@ -106,38 +134,41 @@ class TaskCard {
     return el;
   }
 
+  /**
+   * Render compact progress text (no bar). Returns empty string if no
+   * *meaningful* progress — avoids showing progress UI for non-download tasks.
+   */
   _renderProgress(progress) {
-    if (!progress) {
-      return `
-        <div class="progress-section">
-          <div class="progress-header">
-            <span class="progress-label">进度</span>
-            <span class="progress-percent">—</span>
-          </div>
-          <div class="progress-bar"><div class="progress-fill" style="width: 0%"></div></div>
-        </div>
-      `;
-    }
+    if (!progress) return '';
 
-    const pct = progress.percentage ?? 0;
-    const speed = progress.speed || '-';
-    const eta = progress.eta || '-';
+    const hasPercentage = progress.percentage !== undefined &&
+                          progress.percentage !== null &&
+                          progress.percentage > 0;
+    const hasSpeed = progress.speed && progress.speed !== '0 B/s';
+    const hasEta = progress.eta && progress.eta !== '';
+    const hasMeaningfulStatus = progress.status &&
+                                 progress.status !== 'unknown' &&
+                                 progress.status !== 'normal';
     const summary = progress.raw_summary || '';
 
+    if (!hasPercentage && !hasSpeed && !hasEta && !hasMeaningfulStatus && !summary) {
+      return '';
+    }
+
+    const parts = [];
+    if (hasPercentage) {
+      parts.push(`${progress.percentage.toFixed(1)}%`);
+    }
+    if (hasSpeed) parts.push(`速度 ${progress.speed}`);
+    if (hasEta) parts.push(`预计 ${progress.eta}`);
+    if (hasMeaningfulStatus) {
+      parts.push(`状态 ${progress.status}`);
+    }
+
     return `
-      <div class="progress-section">
-        <div class="progress-header">
-          <span class="progress-label">进度</span>
-          <span class="progress-percent">${pct.toFixed(1)}%</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${Math.min(pct, 100)}%"></div>
-        </div>
-        <div class="progress-details">
-          <span>⚡ ${this._escapeHtml(speed)}</span>
-          <span>⏱️ ${this._escapeHtml(eta)}</span>
-        </div>
-        ${summary ? `<div class="progress-details">${this._escapeHtml(summary)}</div>` : ''}
+      <div class="progress-summary">
+        ${parts.length > 0 ? `<span class="progress-badge">${this._escapeHtml(parts.join(' | '))}</span>` : ''}
+        ${summary ? `<span class="progress-text">${this._escapeHtml(summary)}</span>` : ''}
       </div>
     `;
   }
@@ -166,10 +197,29 @@ class TaskCard {
 
   /**
    * Update card with new data from WebSocket event.
+   * Normalizes field names before merging.
    */
   update(data) {
-    // Re-render with merged data
-    const merged = { ...this.task, ...data };
+    // Normalize incoming data format differences between WebSocket and REST API
+    const normalized = { ...data };
+
+    // WebSocket sends 'metrics' / 'progress' / 'log_lines'
+    // query_status returns 'latest_metrics' / 'latest_progress' / 'recent_logs'
+    if (normalized.metrics && !normalized.latest_metrics) {
+      normalized.latest_metrics = normalized.metrics;
+    }
+    if (normalized.progress && !normalized.latest_progress) {
+      normalized.latest_progress = normalized.progress;
+    }
+    if (normalized.log_lines && !normalized.recent_logs) {
+      normalized.recent_logs = normalized.log_lines;
+    }
+    // query_status returns recent_logs as {lines, entry_count}
+    if (normalized.recent_logs && typeof normalized.recent_logs === 'object' && !Array.isArray(normalized.recent_logs)) {
+      normalized.recent_logs = normalized.recent_logs.lines || [];
+    }
+
+    const merged = { ...this.task, ...normalized };
     this.task = merged;
 
     const newEl = this._render();

@@ -7,8 +7,8 @@ from taskguard.tools.base import BaseTool, ToolRegistry, ToolResult
 from taskguard.tools.cleanup import CleanupExitedTool
 from taskguard.tools.collect_all import CollectAllTool
 from taskguard.tools.exec_bash import ExecBashTool
-from taskguard.tools.find_process import FindProcessTool
-from taskguard.tools.query import ListTasksTool, QueryStatusTool
+from taskguard.tools.find_process import FindProcessTool, ListAllProcessesTool
+from taskguard.tools.query import ListTasksTool, QueryBatchStatusTool, QueryStatusTool
 from taskguard.tools.watch import UnwatchTaskTool, WatchTaskTool
 
 __all__ = [
@@ -19,10 +19,12 @@ __all__ = [
     "UnwatchTaskTool",
     "ListTasksTool",
     "QueryStatusTool",
+    "QueryBatchStatusTool",
     "CollectAllTool",
     "CleanupExitedTool",
     "ExecBashTool",
     "FindProcessTool",
+    "ListAllProcessesTool",
 ]
 
 
@@ -39,7 +41,9 @@ def register_builtin_tools(
     ToolRegistry.register(UnwatchTaskTool(store))
     ToolRegistry.register(ListTasksTool(store))
     ToolRegistry.register(QueryStatusTool(store, metrics_store))
+    ToolRegistry.register(QueryBatchStatusTool(store, metrics_store))
     ToolRegistry.register(CollectAllTool())
     ToolRegistry.register(CleanupExitedTool(store))
     ToolRegistry.register(ExecBashTool())
     ToolRegistry.register(FindProcessTool())
+    ToolRegistry.register(ListAllProcessesTool())

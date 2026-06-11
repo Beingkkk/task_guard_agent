@@ -1,6 +1,7 @@
 agent:
   name: "TaskGuard"
   collect_interval: 30
+  collect_concurrency: 12
   data_dir: "./data"
 
 llm:

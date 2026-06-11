@@ -14,8 +14,12 @@ class BaseCollector(ABC):
     """Abstract base class for log collectors."""
 
     @abstractmethod
-    async def collect_logs(self, task: Task) -> list[str]:
-        """Return newly available log lines since the last call."""
+    async def collect_logs(self, task: Task, **kwargs: object) -> list[str]:
+        """Return log lines from the task's log source.
+
+        Subclasses may accept additional keyword arguments (e.g. `limit`)
+        to control how many lines are returned.
+        """
 
     @abstractmethod
     async def close(self) -> None:

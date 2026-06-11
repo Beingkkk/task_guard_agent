@@ -37,6 +37,7 @@ class AppConfig:
 
     agent_name: str = "TaskGuard"
     collect_interval: int = 30
+    collect_concurrency: int = 12
     data_dir: Path = field(default_factory=lambda: Path("./data"))
     llm: LLMConfig = field(default_factory=LLMConfig)
     crash: CrashConfig = field(default_factory=CrashConfig)
@@ -83,6 +84,7 @@ class ConfigLoader:
         return AppConfig(
             agent_name=raw.get("agent_name", "TaskGuard"),
             collect_interval=raw.get("collect_interval", 30),
+            collect_concurrency=raw.get("collect_concurrency", 12),
             data_dir=Path(raw.get("data_dir", "./data")),
             llm=llm,
             crash=CrashConfig(

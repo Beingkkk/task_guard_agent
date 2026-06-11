@@ -43,8 +43,13 @@ All Python commands run from `SourceCode/` with the venv activated.
 # Start the API server (primary entry point)
 python -m taskguard.api.server
 
-# Start Electron GUI (dev mode)
-cd frontend && npx electron . --dev
+# Start Electron GUI (dev mode) — must use npm script or direct electron binary
+# PowerShell:
+cd frontend
+npm run dev              # recommended; runs "electron . --dev"
+# Git Bash (npx electron may fall back to Node — avoid):
+cd frontend
+../node_modules/.bin/electron . --dev
 
 # Lint and format
 ruff format .
@@ -86,15 +91,66 @@ This runs `scripts/build_all.py` which:
 1. Builds Python backend with PyInstaller → `dist/backend/`
 2. Builds Electron frontend with electron-builder → `dist/electron/`
 
+## Frontend Architecture
+
+The Electron frontend is a **two-panel layout** (refactored from single-page):
+
+```
+Title Bar (frameless, draggable)
+├─ Left Panel: System Process List
+│  ├─ Search box + refresh icon (lists all processes via psutil)
+│  ├─ Process items: name, PID, exe path (click to select)
+│  └─ "设置监控" button (opens watch dialog)
+│
+└─ Right Panel: Monitoring View
+   ├─ Status Bar: last update time, refresh-interval slider
+   ├─ Task Card Grid: name, PID, status indicator, CPU%, memory%, recent logs
+   └─ Detail Panel (slide-out): task info + LLM Q&A
+```
+
+**Key frontend files:**
+- `frontend/main.js` — Spawns Python backend, creates BrowserWindow, proxies HTTP/WS via IPC
+- `frontend/preload.js` — Exposes `window.electronAPI` with `apiGet/Post/Delete/Patch`, WebSocket listeners, window controls
+- `frontend/renderer/app.js` — App state, API calls, WebSocket event handlers, component coordination
+- `frontend/renderer/components/ProcessList.js` — Left panel: fetch `/api/processes`, search filter, selection
+- `frontend/renderer/components/TaskCard.js` — Card with status indicator, metrics, progress bar, log preview
+- `frontend/renderer/components/TaskGrid.js` — Grid container, empty-state toggle
+- `frontend/renderer/components/TaskDetailPanel.js` — Slide-out panel: task info + `/api/tasks/{alias}/ask` LLM chat
+
+**Removed:** bottom natural-language input bar, add-task modal (replaced by process-selection → watch dialog).
+
 ## API Service
 
 The Python backend runs an aiohttp server on `localhost:8080`:
 
-- **REST API**: `/api/tasks` (CRUD), `/api/tasks/{alias}/status`, `/api/tasks/{alias}/alerts`, `/api/collect`, `/api/natural`
-- **WebSocket**: `/ws` — real-time event stream (`task.updated`, `task.alert`, `task.oom`)
-- **Background**: AgentHarness runs a periodic collect cycle (default 30s) while the server handles HTTP requests
+**REST API:**
+- `GET /api/tasks` — list all tasks
+- `POST /api/tasks` — register a new task
+- `DELETE /api/tasks/{alias}` — unregister
+- `PATCH /api/tasks/{alias}` — modify task
+- `GET /api/tasks/{alias}/status` — comprehensive status (metadata + metrics + progress + logs)
+- `GET /api/tasks/{alias}/alerts` — alert history
+- `POST /api/tasks/{alias}/ask` — **LLM Q&A about a specific task** (NEW)
+- `GET /api/processes` — **list all system processes** (name, PID, exe path) (NEW)
+- `POST /api/collect` — manual collection trigger
+- `POST /api/natural` — natural language intent parsing (backend retains; frontend no longer uses)
 
-The Electron frontend connects to this server via HTTP + WebSocket. The main process spawns the Python backend as a child process.
+**WebSocket:** `ws://localhost:8080/ws` — real-time push events (`task.updated`, `task.alert`, `task.oom`)
+
+**Communication model:**
+- **HTTP** is the primary frontend→backend channel (REST API calls for all CRUD and queries).
+- **WebSocket** is backend→frontend push only (real-time updates). It is not used for request/response.
+- **LLM interaction** (backend→Anthropic API) is also HTTP, but that is entirely internal to the Python layer.
+
+### Startup Flow
+
+`main.js` startup sequence:
+1. Spawn Python backend as child process (`python -m taskguard.api.server`)
+2. Poll `GET /api/tasks` until 200 (up to 30s timeout)
+3. Create BrowserWindow, load `renderer/index.html`
+4. Connect WebSocket client in main process, proxy messages to renderer via IPC
+
+If `ipcMain` is `undefined` at runtime, the script is being executed by Node instead of Electron (common in Git Bash when `npx electron` resolves incorrectly). Use `npm run dev` or the direct `electron` binary path.
 
 ## SDD (Spec-Driven Development)
 
@@ -205,6 +261,14 @@ Python API Service (api/server.py)
 
 **Single LLM provider (Claude only).** The project only supports Claude (Anthropic SDK). There is no `provider` selection in `config.yaml` — only `config-claude.json` is read. The `OpenAIProvider` and `config-openai.json` have been removed.
 
+### Process Enumeration
+
+`tools/find_process.py` lists all system processes via `psutil.process_iter()`. The executable path is resolved by:
+1. `psutil.Process(pid).exe()` — actual disk path (e.g. `C:\Program Files\App\app.exe`)
+2. Fallback to `cmdline[0]` if `exe()` raises `AccessDenied`
+
+This is wrapped in `ListAllProcessesTool` and exposed at `GET /api/processes`.
+
 ### Data Flow
 
 1. `collectors/` reads raw data: `FileCollector` tails log files (per-file offset state), `ProcessCollector` samples `psutil` metrics
@@ -232,6 +296,7 @@ Python API Service (api/server.py)
 - `cleanup_exited` — Remove stale tasks whose PIDs are gone
 - `exec_bash` — Run a whitelisted bash command (`ps`, `netstat`, `tasklist`, `ping`, etc.)
 - `find_process` — Search running processes by name
+- `list_all_processes` — List all system processes (name, PID, exe path)
 
 ### Alert Rules (FR-5)
 

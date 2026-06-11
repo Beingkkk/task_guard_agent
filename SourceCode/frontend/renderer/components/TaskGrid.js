@@ -11,6 +11,7 @@ class TaskGrid {
     this.container = document.getElementById(containerId);
     this.emptyState = document.getElementById('empty-state');
     this.cards = new Map(); // alias -> TaskCard
+    this.onClick = options.onClick || (() => {});
     this.onDelete = options.onDelete || (() => {});
   }
 
@@ -74,7 +75,7 @@ class TaskGrid {
     const alias = task.alias || task.registered?.alias;
     if (!alias || this.cards.has(alias)) return;
 
-    const card = new TaskCard(task, (a) => this.onDelete(a));
+    const card = new TaskCard(task, (a) => this.onClick(a), (a) => this.onDelete(a));
     this.cards.set(alias, card);
     this.container.appendChild(card.element);
   }

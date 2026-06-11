@@ -129,6 +129,33 @@ class TestTasksRoutes:
         data = await resp.json()
         assert "error" in data
 
+    async def test_batch_status(self, client: TestClient, tmp_path: Path) -> None:
+        """POST /api/tasks/batch-status returns statuses for multiple tasks."""
+        for alias in ("batch-a", "batch-b"):
+            await client.post("/api/tasks", json={
+                "alias": alias,
+                "log": str(tmp_path / f"{alias}.log"),
+                "pid": 1000,
+            })
+
+        resp = await client.post("/api/tasks/batch-status", json={"aliases": ["batch-a", "batch-b", "missing"]})
+        assert resp.status == 200
+        data = await resp.json()
+        assert "tasks" in data
+        assert len(data["tasks"]) == 3
+
+        aliases = {t["alias"] for t in data["tasks"] if "alias" in t}
+        assert "batch-a" in aliases
+        assert "batch-b" in aliases
+        assert "missing" in aliases
+
+    async def test_batch_status_empty(self, client: TestClient) -> None:
+        """POST /api/tasks/batch-status with empty aliases returns empty list."""
+        resp = await client.post("/api/tasks/batch-status", json={"aliases": []})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["tasks"] == []
+
 
 class TestCollectRoute:
     async def test_collect_all(self, client: TestClient) -> None:

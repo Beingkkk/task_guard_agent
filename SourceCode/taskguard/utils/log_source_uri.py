@@ -9,10 +9,10 @@ from pathlib import PureWindowsPath
 
 @dataclass(slots=True, frozen=True)
 class LogSource:
-    """Immutable log source descriptor (file-only)."""
+    """Immutable log source descriptor (file or directory)."""
 
     type: str  # always "file"
-    path: str | None = None  # semicolon-separated file paths
+    path: str | None = None  # semicolon-separated file paths, or a single directory
     extensions: tuple[str, ...] = (".log", ".txt", ".out")
 
     @property
@@ -22,17 +22,26 @@ class LogSource:
             return []
         return [p.strip() for p in self.path.split(";") if p.strip()]
 
+    @property
+    def is_dir(self) -> bool:
+        """Return True if the primary path points to a directory."""
+        if not self.path:
+            return False
+        first = self.paths[0] if self.paths else ""
+        return first.endswith("\\") or first.endswith("/")
+
     @classmethod
     def parse(cls, input_str: str) -> "LogSource":
         """Parse a log source from a bare path or file:// URI.
 
-        Supports single file or multiple files separated by semicolons:
-            C:\\data\\dl.log
-            C:\\logs\\a.log;C:\\logs\\b.log
-            file://C:\\data\\dl.log         (legacy URI form)
+        Supports:
+            Single file:       C:\\data\\dl.log
+            Multiple files:    C:\\logs\\a.log;C:\\logs\\b.log
+            Directory:         C:\\logs\\       (auto-select newest matching file)
+            Legacy URI:        file://C:\\data\\dl.log
 
         Raises:
-            ValueError: If the path is empty, not absolute, or points to a directory.
+            ValueError: If the path is empty, not absolute, or uses unsupported scheme.
         """
         raw = input_str.strip()
         if not raw:
@@ -51,14 +60,12 @@ class LogSource:
 
         paths = [p.strip() for p in raw.split(";") if p.strip()]
         if not paths:
-            raise ValueError("Log path must specify at least one file")
+            raise ValueError("Log path must specify at least one file or directory")
 
         for path in paths:
             p = PureWindowsPath(path)
             if not p.is_absolute():
                 raise ValueError(f"Path must be absolute: {path}")
-            if path.endswith("\\") or path.endswith("/"):
-                raise ValueError(f"Path must point to a file, not a directory: {path}")
 
         return cls(type="file", path=raw)
 

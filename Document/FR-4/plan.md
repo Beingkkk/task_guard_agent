@@ -230,8 +230,14 @@ class EventPublisher:
 | DELETE | `/api/tasks/{alias}` | — | — | 204 |
 | GET | `/api/tasks/{alias}/status` | — | 综合状态 dict | 200 |
 | GET | `/api/tasks/{alias}/alerts` | — | `list[Alert]` | 200 |
+| GET | `/api/tasks/{alias}/logs` | `limit` (默认 50) | `{lines, source, limit}` | 200 |
+| GET | `/api/tasks/{alias}/log-info` | — | `{type, path, size? / count?, current_file?}` | 200 |
 | POST | `/api/collect` | — | 采集摘要 dict | 200 |
 | POST | `/api/natural` | `{text: str}` | 意图解析结果 | 200 |
+
+> **新增端点**（proposal-0004）：
+> - `/logs`：读取任务日志最后 N 行，供前端展示和 LLM 分析上下文
+> - `/log-info`：返回日志源元数据（文件大小或目录文件数），供详情面板展示 |
 
 ### 6.5.4 WebSocket 契约
 
@@ -590,6 +596,28 @@ CSS 动画：
   animation: blink-red 1s infinite;
 }
 ```
+
+### 9.3 任务详情面板（TaskDetailPanel）
+
+详情面板展示任务综合信息，并支持 LLM Q&A：
+
+**日志信息区域**（proposal-0004 新增）：
+
+| 模式 | 显示内容 | 操作按钮 |
+|---|---|---|
+| 文件模式 | 日志文件大小 | 📄 用记事本打开（调用 `shell.openPath`） |
+| 目录模式 | 目录下日志文件数、当前监控的文件名 | 📁 打开日志目录（调用 `shell.openPath`） |
+| 无日志 | — | — |
+
+**更换日志路径**：
+- 点击「更换日志路径」按钮展开输入框
+- 输入新路径后点击「确认」调用 `PATCH /api/tasks/{alias}`
+- 成功刷新面板显示新日志信息
+
+**实现要点**：
+- 面板加载时并行请求 `/status` 和 `/log-info`
+- `shell:open-path` IPC 通道由 `preload.js` 暴露，`main.js` 通过 `shell.openPath()` 实现
+- 详情面板数据通过 `window.electronAPI.apiGet/Post/Patch` 与后端通信
 
 ---
 

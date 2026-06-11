@@ -26,78 +26,113 @@
     </div>
   </div>
 
-  <!-- Header -->
-  <header class="app-header">
-    <h1></h1>
-    <div class="header-actions">
-      <span id="connection-status" class="status-dot offline" title="连接状态"></span>
-      <button id="btn-add-task" class="btn btn-primary">+ 新增任务</button>
-    </div>
-  </header>
-
   <!-- Main Content -->
   <main class="app-main">
-    <!-- Empty state -->
-    <div id="empty-state" class="empty-state">
-      <div class="empty-icon">📋</div>
-      <p>暂无监控任务</p>
-      <p class="empty-hint">点击右上角「新增任务」开始监控</p>
-    </div>
+    <!-- Left Panel: Process List -->
+    <aside class="left-panel" id="left-panel">
+      <div class="panel-header">
+        <h2>系统进程</h2>
+        <span class="panel-subtitle" id="process-count">0 个进程</span>
+      </div>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="process-search" placeholder="搜索名称或 PID..." autocomplete="off">
+        <button id="btn-refresh-processes" class="btn-icon" title="刷新进程列表">🔄</button>
+      </div>
+      <div class="process-list" id="process-list">
+        <!-- Process items injected here -->
+      </div>
+      <div class="panel-footer">
+        <button id="btn-watch-selected" class="btn btn-primary btn-block" disabled>设置监控</button>
+      </div>
+    </aside>
 
-    <!-- Task grid -->
-    <div id="task-grid" class="task-grid"></div>
+    <!-- Right Panel: Status Bar + Task Grid + Detail -->
+    <section class="right-panel" id="right-panel">
+      <!-- Status Bar (monitoring page only) -->
+      <div class="status-bar" id="status-bar">
+        <div class="status-left">
+          <span class="status-item" id="refresh-status-item" style="opacity: 0; transition: opacity 0.3s;">
+            <span class="status-label spinning" id="refresh-spinner">⟳</span>
+            <span id="refresh-status-text" class="status-value" style="color: var(--color-info);">正在刷新…</span>
+          </span>
+        </div>
+        <div class="status-right">
+          <span class="status-item">
+            <span class="status-label">最后更新</span>
+            <span id="last-update-time" class="status-value">--:--:--</span>
+          </span>
+          <span class="status-item">
+            <span class="status-label">刷新周期</span>
+            <input type="range" id="refresh-interval" min="30" max="180" step="30" value="60">
+            <span id="refresh-interval-display" class="status-value">60s</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Task grid -->
+      <div id="task-grid" class="task-grid"></div>
+
+      <!-- Empty state -->
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p>暂无监控任务</p>
+        <p class="empty-hint">从左侧选择进程并点击「设置监控」</p>
+      </div>
+
+      <!-- Detail Panel (collapsible) -->
+      <div id="detail-panel" class="detail-panel hidden">
+        <div class="detail-header">
+          <h3 id="detail-title">任务详情</h3>
+          <div class="detail-header-actions">
+            <button id="btn-refresh-detail" class="btn-icon" title="刷新任务状态">🔄</button>
+            <button id="btn-close-detail" class="btn-icon" title="关闭">✕</button>
+          </div>
+        </div>
+        <div class="detail-body">
+          <div class="detail-info" id="detail-info"></div>
+          <div class="detail-ask" id="detail-ask">
+            <div class="ask-history" id="ask-history"></div>
+            <div class="ask-input-bar">
+              <input type="text" id="ask-input" placeholder="询问该任务状态，例如：当前进度如何？" autocomplete="off">
+              <button id="btn-send-ask" class="btn btn-send">发送</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <!-- Natural Language Input (bottom fixed) -->
-  <footer class="natural-input-bar">
-    <div class="input-wrapper">
-      <span class="input-icon">💬</span>
-      <input
-        id="natural-input"
-        type="text"
-        placeholder="输入自然语言指令，例如：帮我监控下载A，日志在 C:\\data\\a.log"
-        autocomplete="off"
-      >
-      <button id="btn-send-natural" class="btn btn-send">发送</button>
-    </div>
-    <div id="natural-feedback" class="natural-feedback"></div>
-  </footer>
-
-  <!-- Add Task Dialog (modal) -->
-  <div id="add-task-dialog" class="modal hidden">
+  <!-- Watch Dialog (modal) -->
+  <div id="watch-dialog" class="modal hidden">
     <div class="modal-overlay"></div>
     <div class="modal-content">
       <header class="modal-header">
-        <h2>新增监控任务</h2>
-        <button class="btn-close" id="btn-close-dialog">&times;</button>
+        <h2>设置监控</h2>
+        <button class="btn-close" id="btn-close-watch-dialog">&times;</button>
       </header>
-      <form id="add-task-form" class="modal-body">
+      <form id="watch-form" class="modal-body">
         <div class="form-group">
-          <label for="task-alias">任务别名 <span class="required">*</span></label>
-          <input type="text" id="task-alias" name="alias" placeholder="例如：下载A" required>
+          <label>进程信息</label>
+          <div class="process-info-display" id="watch-process-info"></div>
         </div>
         <div class="form-group">
-          <label for="task-log">日志文件路径 <span class="required">*</span></label>
-          <input type="text" id="task-log" name="log" placeholder="C:\\data\\download.log" required>
-          <span class="form-hint">支持 file:// 前缀，多个文件用分号分隔</span>
+          <label for="watch-alias">监视名称 <span class="required">*</span></label>
+          <input type="text" id="watch-alias" name="alias" required>
         </div>
         <div class="form-group">
-          <label for="task-pid">进程 PID</label>
-          <input type="number" id="task-pid" name="pid" placeholder="可选，留空则不监控进程">
-        </div>
-        <div class="form-group">
-          <label for="task-tool">工具类型</label>
-          <select id="task-tool" name="tool_hint">
-            <option value="">自动检测</option>
-            <option value="wget">wget</option>
-            <option value="curl">curl</option>
-            <option value="rsync">rsync</option>
-            <option value="aria2">aria2</option>
-          </select>
+          <label>日志路径</label>
+          <div class="file-picker-row">
+            <span id="watch-log-display" class="file-picker-display">未选择</span>
+            <input type="hidden" id="watch-log" name="log">
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-file">📄 选择文件</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-dir">📁 选择目录</button>
+          </div>
+          <span class="form-hint">可选，支持同时选择多个文件</span>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" id="btn-cancel-dialog">取消</button>
-          <button type="submit" class="btn btn-primary">注册</button>
+          <button type="button" class="btn btn-secondary" id="btn-cancel-watch">取消</button>
+          <button type="submit" class="btn btn-primary">开始监控</button>
         </div>
       </form>
     </div>
@@ -109,12 +144,11 @@
   </div>
 
   <!-- Scripts -->
-  <script src="components/StatusIndicator.js"></script>
+  <script src="services/websocket.js"></script>
+  <script src="components/ProcessList.js"></script>
   <script src="components/TaskCard.js"></script>
   <script src="components/TaskGrid.js"></script>
-  <script src="components/AddTaskDialog.js"></script>
-  <script src="components/NaturalInput.js"></script>
-  <script src="services/websocket.js"></script>
+  <script src="components/TaskDetailPanel.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── App Info ──────────────────────────────────────────────────────────────
   getVersion: () => '0.1.0',
+  getAppPath: () => ipcRenderer.invoke('app:get-path'),
 
   // ── Window Controls ───────────────────────────────────────────────────────
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
@@ -58,4 +59,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('window:maximize-change', (_event, isMaximized) => callback(isMaximized));
     ipcRenderer.send('window:listen-maximize');
   },
+
+  // ── Shell Operations ──────────────────────────────────────────────────────
+  /** Open a file or directory with the system's default application. */
+  shellOpenPath: (filePath) => ipcRenderer.invoke('shell:open-path', filePath),
+
+  // ── File Dialog ────────────────────────────────────────────────────────────
+  /**
+   * Show a system file/directory open dialog.
+   * @param {{ properties: string[], defaultPath?: string, filters?: object[] }} options
+   * @returns {Promise<{ canceled: boolean, filePaths: string[] }>}
+   */
+  showOpenDialog: (options) => ipcRenderer.invoke('dialog:show-open', options),
 });

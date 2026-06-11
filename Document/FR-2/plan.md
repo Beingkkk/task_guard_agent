@@ -297,19 +297,24 @@ class BaseCollector(ABC):
 
 | 维度 | 设计 |
 |---|---|
-| 首次采集 | `open(path, "r", encoding="utf-8", errors="replace")`，seek 到文件末尾（只读新增） |
-| 增量读取 | `readlines()` 读取从上次 offset 到 EOF 的内容 |
-| 偏移维护 | `Task.state["file"]` = `{"offset": <int>, "inode": <int>}` |
-| 文件轮转 | 检测到 inode 变化时，从头重新读取（写 ADR 若需更复杂策略） |
+| 采集逻辑 | 每次采集重新打开文件，使用 `collections.deque(f, maxlen=N)` 读取最后 N 行 |
+| 行数限制 | 默认 `N=50`，通过 `collect_logs(task, limit=N)` 参数覆盖 |
+| 状态维护 | `Task.state["file"]` = `{"path": <str>, "stalled": <bool>}`（**不再维护 offset**） |
+| 文件句柄 | 不复用文件句柄，每次采集独立打开/关闭 |
 
 #### 目录模式
 
 | 维度 | 设计 |
 |---|---|
 | 扫描逻辑 | `os.scandir()` 列出目录，按 `extensions` 过滤，按 `st_mtime` 排序找最新文件 |
-| 采集逻辑 | 与单文件相同：维护偏移量，读取新增行 |
-| 停滞检测 | 若最新文件的 `st_mtime` 距现在超过 `task.config.stalled_threshold` 秒，本次 `collect_logs()` 返回空列表并在 `Task.state["file"]` 中标记 `"stalled": true` |
-| 文件切换 | 当最新文件发生变化（另一个文件更近了），旧文件 offset 保留，新文件从末尾开始 |
+| 采集逻辑 | 解析到最新文件后，与单文件模式相同：读取最后 N 行 |
+| 停滞检测 | 若最新文件的 `st_mtime` 距现在超过 `task.config.stalled_threshold` 秒，`Task.state["file"]["stalled"]` 标记为 `true` |
+| 文件切换 | 每次采集周期重新解析最新文件，自动切换，无需通知 |
+
+> **变更说明**（proposal-0004）：从 offset 增量 tail 模式改为每次读取最后 N 行，原因：
+> 1. 为分析层（FR-3）提供足够的上下文（每次都有 50 行而不是可能只有 1-2 行新增）
+> 2. 简化实现，消除文件句柄缓存和 offset 持久化问题
+> 3. 目录模式下自然支持日志轮转（新文件自动生成时自动切换） |
 
 ### 8.4 `ProcessCollector`
 

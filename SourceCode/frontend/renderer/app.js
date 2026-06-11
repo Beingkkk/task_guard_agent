@@ -1,9 +1,10 @@
 /**
- * TaskGuard Renderer App
+ * TaskGuard Renderer App (Refactored)
  * Relates-to: FR-4
  *
- * Main application logic: coordinates API calls, WebSocket events,
- * and UI components.
+ * Two-panel layout: process list on the left, task monitoring on the right.
+ * Status bar with refresh interval and manual refresh.
+ * Detail panel with LLM Q&A on card click.
  */
 
 (function () {
@@ -18,6 +19,9 @@
     const response = await window.electronAPI.invoke('api:request', { method, path, body });
     return response;
   }
+
+  // Expose for components
+  window.apiRequest = apiRequest;
 
   // ── Toast Notification ─────────────────────────────────────────────────────
 
@@ -34,16 +38,45 @@
     }, duration);
   }
 
-  // Expose globally for components
   window.showToast = showToast;
 
-  // ── Connection Status ──────────────────────────────────────────────────────
+  // ── Status Bar ─────────────────────────────────────────────────────────────
 
-  function setConnectionStatus(connected) {
-    const dot = document.getElementById('connection-status');
-    if (!dot) return;
-    dot.className = `status-dot ${connected ? 'online' : 'offline'}`;
-    dot.title = connected ? '已连接' : '未连接';
+  let lastUpdateTime = null;
+  let refreshIntervalSec = 60;
+  let refreshTimer = null;
+
+  function updateLastUpdateTime() {
+    lastUpdateTime = new Date();
+    const el = document.getElementById('last-update-time');
+    if (el) {
+      el.textContent = lastUpdateTime.toLocaleTimeString('zh-CN');
+    }
+  }
+
+  function initStatusBar() {
+    const slider = document.getElementById('refresh-interval');
+    const display = document.getElementById('refresh-interval-display');
+
+    if (slider && display) {
+      slider.addEventListener('input', () => {
+        refreshIntervalSec = parseInt(slider.value, 10);
+        display.textContent = `${refreshIntervalSec}s`;
+        restartRefreshTimer();
+      });
+    }
+  }
+
+  function startRefreshTimer() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => {
+      loadTasks();
+      updateLastUpdateTime();
+    }, refreshIntervalSec * 1000);
+  }
+
+  function restartRefreshTimer() {
+    startRefreshTimer();
   }
 
   // ── App State ──────────────────────────────────────────────────────────────
@@ -51,51 +84,284 @@
   const state = {
     tasks: [],
     connected: false,
+    selectedProcess: null,
   };
 
   // ── Components ─────────────────────────────────────────────────────────────
 
+  let processList = null;
   let taskGrid = null;
-  let addDialog = null;
-  let naturalInput = null;
+  let detailPanel = null;
+  let watchDialog = null;
 
-  // ── Load Tasks ─────────────────────────────────────────────────────────────
+  // ── Process List ───────────────────────────────────────────────────────────
+
+  async function loadProcesses() {
+    await processList?.loadProcesses(apiRequest);
+  }
+
+  function handleProcessSelect(proc) {
+    state.selectedProcess = proc;
+  }
+
+  function handleProcessWatch(proc) {
+    state.selectedProcess = proc;
+    watchDialog?.show(proc);
+  }
+
+  // ── Watch Dialog ───────────────────────────────────────────────────────────
+
+  class WatchDialog {
+    constructor() {
+      this.dialog = document.getElementById('watch-dialog');
+      this.form = document.getElementById('watch-form');
+      this.overlay = this.dialog?.querySelector('.modal-overlay');
+      this.processInfoEl = document.getElementById('watch-process-info');
+      this.aliasInput = document.getElementById('watch-alias');
+      this.logInput = document.getElementById('watch-log');
+      this.logDisplay = document.getElementById('watch-log-display');
+      this._defaultPath = null;
+      this._bindEvents();
+    }
+
+    _bindEvents() {
+      if (!this.dialog || !this.form) return;
+
+      this.overlay?.addEventListener('click', () => this.hide());
+      document.getElementById('btn-close-watch-dialog')?.addEventListener('click', () => this.hide());
+      document.getElementById('btn-cancel-watch')?.addEventListener('click', () => this.hide());
+
+      document.getElementById('btn-browse-file')?.addEventListener('click', () => this._browseFile());
+      document.getElementById('btn-browse-dir')?.addEventListener('click', () => this._browseDir());
+
+      this.form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this._handleSubmit();
+      });
+    }
+
+    _getDefaultPath() {
+      return this._defaultPath || '';
+    }
+
+    _extractDir(exePath) {
+      if (!exePath) return '';
+      const lastSep = Math.max(exePath.lastIndexOf('\\'), exePath.lastIndexOf('/'));
+      return lastSep >= 0 ? exePath.substring(0, lastSep + 1) : exePath;
+    }
+
+    async _browseFile() {
+      if (!window.electronAPI?.showOpenDialog) {
+        showToast('文件选择不可用', 'error');
+        return;
+      }
+      const result = await window.electronAPI.showOpenDialog({
+        defaultPath: this._getDefaultPath(),
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+          { name: '日志文件', extensions: ['log', 'txt', 'out'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+      });
+      if (result.canceled || !result.filePaths?.length) return;
+
+      const paths = result.filePaths.join(';');
+      this.logInput.value = paths;
+      this._updateDisplay(paths);
+    }
+
+    async _browseDir() {
+      if (!window.electronAPI?.showOpenDialog) {
+        showToast('文件选择不可用', 'error');
+        return;
+      }
+      const result = await window.electronAPI.showOpenDialog({
+        defaultPath: this._getDefaultPath(),
+        properties: ['openDirectory'],
+      });
+      if (result.canceled || !result.filePaths?.length) return;
+
+      let dirPath = result.filePaths[0];
+      // Ensure trailing separator for directory recognition
+      if (!dirPath.endsWith('\\') && !dirPath.endsWith('/')) {
+        dirPath += '\\';
+      }
+      this.logInput.value = dirPath;
+      this._updateDisplay(dirPath);
+    }
+
+    _updateDisplay(paths) {
+      if (!this.logDisplay) return;
+      if (!paths) {
+        this.logDisplay.textContent = '未选择';
+        return;
+      }
+      // Show abbreviated path for display
+      const parts = paths.split(';');
+      if (parts.length === 1) {
+        this.logDisplay.textContent = parts[0];
+        this.logDisplay.title = parts[0];
+      } else {
+        this.logDisplay.textContent = `${parts[0]} 等 ${parts.length} 个文件`;
+        this.logDisplay.title = paths;
+      }
+    }
+
+    show(proc) {
+      if (!this.dialog) return;
+
+      this.currentProc = proc;
+      this.aliasInput.value = proc.name || '';
+      this.logInput.value = '';
+      this._updateDisplay(null);
+
+      // Default path = process exe directory
+      this._defaultPath = this._extractDir(proc.exe);
+
+      if (this.processInfoEl) {
+        const name = this._escapeHtml(proc.name || 'Unknown');
+        const exe = this._escapeHtml(proc.exe || '-');
+        this.processInfoEl.innerHTML = `
+          <table class="process-info-table">
+            <tr><td class="pi-label">名称</td><td class="pi-value">${name}</td></tr>
+            <tr><td class="pi-label">PID</td><td class="pi-value pi-mono">${proc.pid}</td></tr>
+            <tr><td class="pi-label">路径</td><td class="pi-value pi-path">${exe}</td></tr>
+          </table>
+        `;
+      }
+
+      this.dialog.classList.remove('hidden');
+      setTimeout(() => this.aliasInput?.focus(), 50);
+    }
+
+    hide() {
+      if (!this.dialog) return;
+      this.dialog.classList.add('hidden');
+      this.form?.reset();
+      this.logInput.value = '';
+      this._updateDisplay(null);
+      this.currentProc = null;
+    }
+
+    async _handleSubmit() {
+      if (!this.currentProc) return;
+
+      const alias = this.aliasInput?.value?.trim();
+      const log = this.logInput?.value?.trim();
+
+      if (!alias) {
+        showToast('请填写监视名称', 'error');
+        return;
+      }
+
+      const payload = {
+        alias,
+        pid: this.currentProc.pid,
+      };
+      if (log) {
+        payload.log = log;
+      }
+
+      try {
+        showToast('正在注册监控...', 'info', 2000);
+        const resp = await apiRequest('POST', '/api/tasks', payload);
+
+        if (resp.status === 201) {
+          showToast(`任务 "${alias}" 注册成功`, 'success');
+          this.hide();
+          await loadTasks();
+        } else if (resp.status === 409) {
+          showToast(resp.data?.message || '任务已存在', 'error');
+        } else {
+          showToast(resp.data?.message || '注册失败', 'error');
+        }
+      } catch (err) {
+        console.error('[App] Register failed:', err);
+        showToast('注册失败: ' + err.message, 'error');
+      }
+    }
+
+    _escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  }
+
+  // ── Refresh Status Indicator ───────────────────────────────────────────────
+
+  function setRefreshStatus(loading, text) {
+    const item = document.getElementById('refresh-status-item');
+    const spinner = document.getElementById('refresh-spinner');
+    const label = document.getElementById('refresh-status-text');
+    if (!item || !spinner || !label) return;
+
+    if (loading) {
+      item.style.opacity = '1';
+      spinner.classList.add('spinning');
+      label.textContent = text || '正在刷新…';
+    } else {
+      item.style.opacity = '0';
+      spinner.classList.remove('spinning');
+      label.textContent = '';
+    }
+  }
+
+  // ── Task Grid ──────────────────────────────────────────────────────────────
 
   async function loadTasks() {
+    setRefreshStatus(true, '正在刷新…');
     try {
       const resp = await apiRequest('GET', '/api/tasks');
       if (resp.status === 200 && resp.data?.tasks) {
-        state.tasks = resp.data.tasks;
-        taskGrid?.renderTasks(state.tasks);
+        const basicTasks = resp.data.tasks;
+        const currentAliases = new Set(taskGrid?.getTaskAliases() || []);
+        const newAliases = new Set(basicTasks.map((t) => t.alias));
+
+        // 1. Render cards immediately with basic info so the UI doesn't stay blank
+        state.tasks = basicTasks;
+        for (const task of basicTasks) {
+          taskGrid?.addOrUpdateTask(task);
+        }
+
+        // 2. Fetch full status in batch to avoid browser connection limits
+        if (basicTasks.length > 0) {
+          const aliases = basicTasks.map((t) => t.alias);
+          apiRequest('POST', '/api/tasks/batch-status', { aliases })
+            .then((batchResp) => {
+              if (batchResp.status === 200 && batchResp.data?.tasks) {
+                for (const task of batchResp.data.tasks) {
+                  taskGrid?.addOrUpdateTask(task);
+                }
+              }
+            })
+            .catch((e) => {
+              console.error('[App] Batch status failed:', e);
+            });
+        }
+
+        // Remove cards for tasks that no longer exist
+        for (const alias of currentAliases) {
+          if (!newAliases.has(alias)) {
+            taskGrid?.removeTask(alias);
+          }
+        }
+
+        updateLastUpdateTime();
+      } else {
+        state.tasks = [];
+        taskGrid?.renderTasks([]);
       }
     } catch (err) {
       console.error('[App] Failed to load tasks:', err);
-      showToast('加载任务列表失败', 'error');
+    } finally {
+      setRefreshStatus(false);
     }
   }
 
-  // ── Register Task ──────────────────────────────────────────────────────────
-
-  async function registerTask(payload) {
-    try {
-      showToast('正在注册...', 'info', 2000);
-      const resp = await apiRequest('POST', '/api/tasks', payload);
-
-      if (resp.status === 201) {
-        showToast(`任务 "${payload.alias}" 注册成功`, 'success');
-        await loadTasks();
-      } else if (resp.status === 409) {
-        showToast(resp.data?.message || '任务已存在', 'error');
-      } else {
-        showToast(resp.data?.message || '注册失败', 'error');
-      }
-    } catch (err) {
-      console.error('[App] Register failed:', err);
-      showToast('注册失败: ' + err.message, 'error');
-    }
+  function handleTaskClick(alias) {
+    detailPanel?.show(alias);
   }
-
-  // ── Delete Task ────────────────────────────────────────────────────────────
 
   async function deleteTask(alias) {
     if (!confirm(`确定要注销任务 "${alias}" 吗？`)) return;
@@ -105,47 +371,16 @@
       if (resp.status === 204) {
         showToast(`任务 "${alias}" 已注销`, 'success');
         taskGrid?.removeTask(alias);
+        // Close detail panel if open for this task
+        if (detailPanel?.currentAlias === alias) {
+          detailPanel.hide();
+        }
       } else {
         showToast('注销失败', 'error');
       }
     } catch (err) {
       console.error('[App] Delete failed:', err);
       showToast('注销失败: ' + err.message, 'error');
-    }
-  }
-
-  // ── Natural Language ───────────────────────────────────────────────────────
-
-  async function handleNaturalInput(text) {
-    naturalInput?.showFeedback('处理中...', 'info');
-
-    try {
-      const resp = await apiRequest('POST', '/api/natural', { text });
-      const data = resp.data;
-
-      if (data?.executed) {
-        naturalInput?.showFeedback(
-          `✅ 已执行: ${data.intent}`,
-          'success'
-        );
-        // Refresh task list if the operation might have changed it
-        if (['watch_task', 'unwatch_task'].includes(data.intent)) {
-          await loadTasks();
-        }
-      } else if (data?.missing_params?.length > 0) {
-        naturalInput?.showFeedback(
-          `⚠️ 缺少参数: ${data.missing_params.join(', ')}`,
-          'error'
-        );
-      } else {
-        naturalInput?.showFeedback(
-          data?.message || '无法执行该指令',
-          'error'
-        );
-      }
-    } catch (err) {
-      console.error('[App] Natural language failed:', err);
-      naturalInput?.showFeedback('请求失败: ' + err.message, 'error');
     }
   }
 
@@ -159,17 +394,14 @@
 
     wsService.on('connected', () => {
       state.connected = true;
-      setConnectionStatus(true);
       showToast('WebSocket 已连接', 'success', 2000);
     });
 
     wsService.on('disconnected', () => {
       state.connected = false;
-      setConnectionStatus(false);
     });
 
     wsService.on('task.updated', (data) => {
-      // Merge updated data into existing task card
       if (data?.alias) {
         taskGrid?.addOrUpdateTask({
           alias: data.alias,
@@ -217,13 +449,11 @@
       window.electronAPI?.closeWindow?.();
     });
 
-    // Update maximize button icon based on state
     if (window.electronAPI?.onMaximizeChange) {
       window.electronAPI.onMaximizeChange((isMaximized) => {
         const svg = btnMax.querySelector('svg');
         if (!svg) return;
         if (isMaximized) {
-          // Restore icon (overlapping squares)
           svg.innerHTML = `
             <rect x="2.5" y="2.5" width="4" height="4" fill="none" stroke="currentColor" stroke-width="0.8"/>
             <rect x="3.5" y="3.5" width="4" height="4" fill="none" stroke="currentColor" stroke-width="0.8"/>
@@ -231,7 +461,6 @@
           btnMax.title = '还原';
           document.body.classList.add('maximized');
         } else {
-          // Maximize icon (single square)
           svg.innerHTML = `
             <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/>
           `;
@@ -247,36 +476,43 @@
   function init() {
     console.log('[App] Initializing TaskGuard renderer...');
     initTitleBar();
+    initStatusBar();
 
     // Initialize components
+    processList = new ProcessList('process-list', {
+      onSelect: handleProcessSelect,
+      onWatch: handleProcessWatch,
+    });
+
     taskGrid = new TaskGrid('task-grid', {
+      onClick: handleTaskClick,
       onDelete: deleteTask,
     });
 
-    addDialog = new AddTaskDialog({
-      onSubmit: registerTask,
+    detailPanel = new TaskDetailPanel({
+      onClose: () => {},
+      apiRequest,
     });
 
-    naturalInput = new NaturalInput({
-      onSubmit: handleNaturalInput,
-    });
+    watchDialog = new WatchDialog();
 
     // Set up WebSocket listeners
     setupWebSocket();
 
-    // Backend error handler (e.g., Python failed to start)
+    // Backend error handler
     if (typeof window.electronAPI?.onBackendError === 'function') {
       window.electronAPI.onBackendError((msg) => {
         showToast(`后端错误: ${msg}`, 'error', 10000);
-        setConnectionStatus(false);
       });
     }
 
     // Initial load
+    loadProcesses();
     loadTasks();
+    updateLastUpdateTime();
 
-    // Poll for updates every 10s as fallback (WebSocket is primary)
-    setInterval(loadTasks, 10000);
+    // Start refresh timer
+    startRefreshTimer();
 
     console.log('[App] Initialized');
   }

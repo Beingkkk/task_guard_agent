@@ -25,10 +25,12 @@ class AgentHarness:
         store: TaskStore,
         metrics_store: MetricsStore,
         collect_interval: int = 30,
+        collect_concurrency: int = 12,
     ) -> None:
         self._store = store
         self._metrics_store = metrics_store
         self._interval = collect_interval
+        self._concurrency = max(1, collect_concurrency)
         self._running = False
         self._collectors: dict[str, BaseCollector] = {}
         self._process_collector = ProcessCollector()
@@ -66,14 +68,27 @@ class AgentHarness:
         self._running = False
 
     async def _run_cycle(self) -> None:
-        """Collect and persist one snapshot per task."""
-        for task in self._store.list_all():
-            try:
-                await self._collect_task(task)
-            except CollectionError as exc:
-                logger.error("Collection failed for %s: %s", task.alias, exc)
-            except Exception:
-                logger.exception("Unexpected error collecting %s", task.alias)
+        """Collect and persist one snapshot per task concurrently.
+
+        Each task runs in its own coroutine and publishes WebSocket events
+        as soon as it finishes; we do not wait for the whole batch.
+        """
+        tasks = self._store.list_all()
+        if not tasks:
+            return
+
+        semaphore = asyncio.Semaphore(self._concurrency)
+
+        async def _collect_one(task: Any) -> None:
+            async with semaphore:
+                try:
+                    await self._collect_task(task)
+                except CollectionError as exc:
+                    logger.error("Collection failed for %s: %s", task.alias, exc)
+                except Exception:
+                    logger.exception("Unexpected error collecting %s", task.alias)
+
+        await asyncio.gather(*(_collect_one(task) for task in tasks))
 
     async def _collect_task(self, task: Any) -> None:
         """Collect logs and metrics for a single task."""

@@ -85,7 +85,27 @@ class MetricsStore:
         """Open connection and ensure schema."""
         self._conn = await aiosqlite.connect(self.db_path)
         await self._conn.executescript(_SCHEMA)
+        await self._migrate_metrics_table()
         await self._conn.commit()
+
+    async def _migrate_metrics_table(self) -> None:
+        """Add missing columns to the metrics table (idempotent)."""
+        assert self._conn is not None
+        async with self._conn.execute(
+            "PRAGMA table_info(metrics)"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            existing_columns = {row[1] for row in rows}
+        # Columns that may be missing in older databases
+        migrations: list[tuple[str, str]] = [
+            ("memory_percent", "REAL"),
+            ("status", "TEXT"),
+        ]
+        for col_name, col_type in migrations:
+            if col_name not in existing_columns:
+                await self._conn.execute(
+                    f"ALTER TABLE metrics ADD COLUMN {col_name} {col_type}"
+                )
 
     async def close(self) -> None:
         """Close connection."""

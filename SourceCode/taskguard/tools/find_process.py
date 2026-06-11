@@ -11,6 +11,24 @@ import psutil
 from taskguard.tools.base import BaseTool, ToolResult
 
 
+def _get_process_exe(proc: psutil.Process) -> str:
+    """Get the executable path for a process.
+
+    Tries exe() first (the actual disk path), falls back to cmdline[0].
+    """
+    try:
+        return proc.exe()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        pass
+    try:
+        cmdline = proc.cmdline()
+        if cmdline:
+            return cmdline[0]
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        pass
+    return ""
+
+
 def _find_processes_sync(name: str) -> list[dict[str, Any]]:
     """Search for processes matching the given name (case-insensitive substring match).
 
@@ -32,6 +50,7 @@ def _find_processes_sync(name: str) -> list[dict[str, Any]]:
                     {
                         "pid": pinfo["pid"],
                         "name": pinfo.get("name") or "",
+                        "exe": _get_process_exe(proc),
                         "cmdline": " ".join(cmdline)[:120] if cmdline else "(no cmdline)",
                     }
                 )
@@ -48,6 +67,28 @@ def _find_processes_sync(name: str) -> list[dict[str, Any]]:
 
     candidates.sort(key=_sort_key)
     return candidates
+
+
+def _list_all_processes_sync() -> list[dict[str, Any]]:
+    """List all running processes with name, pid, and executable path."""
+    processes: list[dict[str, Any]] = []
+
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            pinfo = proc.info
+            processes.append(
+                {
+                    "pid": pinfo["pid"],
+                    "name": pinfo.get("name") or "",
+                    "exe": _get_process_exe(proc),
+                }
+            )
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    # Sort by name for consistent ordering
+    processes.sort(key=lambda p: p["name"].lower())
+    return processes
 
 
 class FindProcessTool(BaseTool):
@@ -67,3 +108,14 @@ class FindProcessTool(BaseTool):
             return ToolResult(ok=True, data=[], message=f"No processes found matching '{name}'")
 
         return ToolResult(ok=True, data=candidates)
+
+
+class ListAllProcessesTool(BaseTool):
+    """List all running processes."""
+
+    name = "list_all_processes"
+    description = "List all running processes with name, PID, and executable path"
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        processes = await asyncio.to_thread(_list_all_processes_sync)
+        return ToolResult(ok=True, data=processes)

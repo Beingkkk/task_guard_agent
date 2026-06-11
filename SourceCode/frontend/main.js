@@ -10,7 +10,7 @@
  * 5. Proxy HTTP requests and WebSocket messages via IPC
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const http = require('http');
@@ -205,6 +205,42 @@ ipcMain.on('window:listen-maximize', (event) => {
 });
 
 /**
+ * Open a file or directory with the system's default application.
+ * renderer: window.electronAPI.shellOpenPath(path)
+ */
+ipcMain.handle('shell:open-path', async (_event, filePath) => {
+  if (!filePath) return { ok: false, error: 'No path provided' };
+  try {
+    const result = await shell.openPath(filePath);
+    // shell.openPath returns empty string on success, error message on failure
+    if (result) {
+      return { ok: false, error: result };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+/**
+ * Get the application path for default directory selection.
+ * renderer: window.electronAPI.getAppPath()
+ */
+ipcMain.handle('app:get-path', () => {
+  return app.getAppPath();
+});
+
+/**
+ * Show system file/directory open dialog.
+ * renderer: window.electronAPI.showOpenDialog(options)
+ */
+ipcMain.handle('dialog:show-open', async (_event, options) => {
+  if (!mainWindow) return { canceled: true, filePaths: [] };
+  const result = await dialog.showOpenDialog(mainWindow, options);
+  return result;
+});
+
+/**
  * Proxy HTTP requests from renderer to Python backend.
  * renderer: window.electronAPI.invoke('api:request', { method, path, body })
  * main:     makes HTTP request, returns JSON
@@ -262,6 +298,9 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // Start maximized by default
+  mainWindow.maximize();
 
   if (getIsDev()) {
     mainWindow.webContents.openDevTools();

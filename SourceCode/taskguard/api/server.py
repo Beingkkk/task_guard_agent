@@ -16,6 +16,7 @@ from taskguard.api.websocket import WebSocketManager, setup_websocket_routes
 from taskguard.collectors.file_collector import FileCollector
 from taskguard.config_loader import ConfigLoader
 from taskguard.crash.dumper import CrashDumper
+from taskguard.llm.base import BaseProvider
 from taskguard.llm.factory import LLMConfig, create_provider
 from taskguard.storage.metrics_store import MetricsStore
 from taskguard.storage.task_store import TaskStore
@@ -32,6 +33,7 @@ class APIServer:
         store: TaskStore,
         metrics_store: MetricsStore,
         harness: AgentHarness | None = None,
+        provider: BaseProvider | None = None,
         host: str = "127.0.0.1",
         port: int = 8080,
     ) -> None:
@@ -40,6 +42,7 @@ class APIServer:
         self._host = host
         self._port = port
         self._harness = harness
+        self._provider = provider
         self._app: web.Application | None = None
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
@@ -57,9 +60,10 @@ class APIServer:
         app["metrics_store"] = self._metrics_store
         app["event_publisher"] = publisher
         app["ws_manager"] = ws_manager
+        app["provider"] = self._provider
 
         # Setup routes
-        setup_routes(app)
+        setup_routes(app, self._provider)
         setup_websocket_routes(app)
 
         # Wire event publisher into harness if available
@@ -86,7 +90,7 @@ class APIServer:
         logger.info("API server stopped")
 
 
-async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarness, TaskStore, MetricsStore]:
+async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarness, TaskStore, MetricsStore, BaseProvider | None]:
     """Set up the AgentHarness with all collectors and analyzers."""
     store = TaskStore(data_dir)
     metrics = MetricsStore(data_dir / "metrics.db")
@@ -94,8 +98,13 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
     # Load config
     cfg = ConfigLoader.load(config_path)
     collect_interval = getattr(cfg, "collect_interval", 30)
+    collect_concurrency = getattr(cfg, "collect_concurrency", 12)
 
-    harness = AgentHarness(store, metrics, collect_interval=collect_interval)
+    harness = AgentHarness(
+        store, metrics,
+        collect_interval=collect_interval,
+        collect_concurrency=collect_concurrency,
+    )
     harness.register_collector("file", FileCollector())
 
     # Wire FR-6 crash handler
@@ -107,6 +116,7 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
     )
 
     # Wire FR-3 analyzer if LLM config is available
+    provider: BaseProvider | None = None
     try:
         provider = create_provider(
             LLMConfig(
@@ -128,7 +138,7 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
     except Exception:
         logger.warning("LLM analyzer not available; running without progress extraction")
 
-    return harness, store, metrics
+    return harness, store, metrics, provider
 
 
 async def main() -> None:
@@ -143,7 +153,7 @@ async def main() -> None:
     meipass = getattr(sys, "_MEIPASS", None)
     config_path = Path(meipass) / "config" if meipass else Path("config")
 
-    harness, store, metrics = await _setup_harness(config_path, data_dir)
+    harness, store, metrics, provider = await _setup_harness(config_path, data_dir)
 
     # Load tasks
     await store.load()
@@ -153,7 +163,7 @@ async def main() -> None:
     register_builtin_tools(store, metrics)
 
     # Start server
-    server = APIServer(store, metrics, harness=harness)
+    server = APIServer(store, metrics, harness=harness, provider=provider)
     await server.start()
 
     # Start harness in background

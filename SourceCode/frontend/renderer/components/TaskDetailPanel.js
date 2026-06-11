@@ -160,20 +160,46 @@ class TaskDetailPanel {
       html += this._infoRow('工作集内存', this._formatBytes(memWset));
     }
 
-    if (progress) {
-      html += this._infoRow('进度', `${progress.percentage?.toFixed(1) ?? 0}%`);
-      if (progress.speed) {
-        html += this._infoRow('速度', progress.speed);
-      }
-      if (progress.eta) {
-        html += this._infoRow('预计剩余', progress.eta);
-      }
-    }
+    // Recent logs preview
+    html += this._renderRecentLogs(data.recent_logs);
 
     // Log source info with open button
     html += this._renderLogSection(logSource);
 
     this.infoEl.innerHTML = html;
+  }
+
+  _renderRecentLogs(recentLogs) {
+    // Normalize: query_status returns {lines, entry_count}; WS may send plain array
+    let lines = [];
+    if (recentLogs) {
+      if (Array.isArray(recentLogs)) {
+        lines = recentLogs;
+      } else if (recentLogs.lines && Array.isArray(recentLogs.lines)) {
+        lines = recentLogs.lines;
+      }
+    }
+
+    const count = Array.isArray(recentLogs) ? lines.length : (recentLogs?.entry_count || lines.length);
+
+    let html = '<div class="detail-logs-preview">';
+    html += '<div class="detail-logs-header">最近日志';
+    if (count > 0) {
+      html += ` <span class="detail-logs-count">(${count} 条)</span>`;
+    }
+    html += '</div>';
+
+    if (lines.length === 0) {
+      html += '<div class="detail-log-empty">暂无日志</div>';
+    } else {
+      html += '<div class="detail-log-lines">';
+      for (const line of lines.slice(-20)) {
+        html += `<div class="detail-log-line">${this._escapeHtml(String(line))}</div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
   }
 
   _renderLogSection(logSource) {
@@ -189,36 +215,24 @@ class TaskDetailPanel {
         const count = logInfo.count ?? 0;
         const currentFile = logInfo.current_file || '-';
         html += this._infoRow('日志文件数', `${count} 个`);
-        html += this._infoRow('当前文件', currentFile);
-
-        if (logInfo.path) {
-          html += `<div class="detail-log-actions">
-            <button class="btn btn-sm btn-secondary" data-action="open-log" data-path="${this._escapeHtml(logInfo.path)}">
-              📁 打开日志目录
-            </button>
-          </div>`;
-        }
+        html += this._infoRow('当前文件', `<span class="detail-path-truncate" title="${this._escapeHtml(currentFile)}">${this._escapeHtml(currentFile)}</span>`);
       } else if (logInfo.type === 'file') {
         // File mode
         const size = logInfo.size !== null && logInfo.size !== undefined
           ? this._formatBytes(logInfo.size)
           : '-';
         html += this._infoRow('日志大小', size);
-
-        if (logInfo.path) {
-          html += `<div class="detail-log-actions">
-            <button class="btn btn-sm btn-secondary" data-action="open-log" data-path="${this._escapeHtml(logInfo.path)}">
-              📄 用记事本打开
-            </button>
-          </div>`;
-        }
       }
     }
 
-    // Change log source button
-    html += `<div class="detail-log-actions">
-      <button class="btn btn-sm btn-link" data-action="change-log">更换日志路径</button>
-    </div>`;
+    // Action buttons row: open + change
+    html += '<div class="detail-log-actions">';
+    if (logInfo?.path) {
+      const btnLabel = logInfo.type === 'dir' ? '📁 打开日志目录' : '📄 用记事本打开';
+      html += `<button class="btn btn-sm btn-secondary" data-action="open-log" data-path="${this._escapeHtml(logInfo.path)}">${btnLabel}</button>`;
+    }
+    html += `<button class="btn btn-sm btn-link" data-action="change-log">更换日志路径</button>`;
+    html += '</div>';
 
     // Hidden change-log picker (shown on click)
     html += `<div id="change-log-box" class="change-log-box hidden">

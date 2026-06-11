@@ -1,5 +1,5 @@
 /**
- * TaskGrid Component
+ * TaskGrid Component — Refactored
  * Relates-to: FR-4
  *
  * Manages the grid of task cards. Handles initial load, updates from
@@ -15,9 +15,6 @@ class TaskGrid {
     this.onDelete = options.onDelete || (() => {});
   }
 
-  /**
-   * Render the initial grid from a list of tasks.
-   */
   renderTasks(tasks) {
     this.container.innerHTML = '';
     this.cards.clear();
@@ -34,9 +31,6 @@ class TaskGrid {
     }
   }
 
-  /**
-   * Add or update a single task card.
-   */
   addOrUpdateTask(taskData) {
     const alias = taskData.alias || taskData.registered?.alias;
     if (!alias) return;
@@ -49,24 +43,17 @@ class TaskGrid {
     }
   }
 
-  /**
-   * Remove a task card.
-   */
   removeTask(alias) {
     const card = this.cards.get(alias);
-    if (card && card.element) {
+    if (card?.element) {
       card.element.remove();
-      this.cards.delete(alias);
     }
-
+    this.cards.delete(alias);
     if (this.cards.size === 0) {
       this._showEmpty(true);
     }
   }
 
-  /**
-   * Get all currently displayed task aliases.
-   */
   getTaskAliases() {
     return Array.from(this.cards.keys());
   }

@@ -363,9 +363,13 @@
     detailPanel?.show(alias);
   }
 
+  const _deleting = new Set();
+
   async function deleteTask(alias) {
+    if (_deleting.has(alias)) return;
     if (!confirm(`确定要注销任务 "${alias}" 吗？`)) return;
 
+    _deleting.add(alias);
     try {
       const resp = await apiRequest('DELETE', `/api/tasks/${encodeURIComponent(alias)}`);
       if (resp.status === 204) {
@@ -381,6 +385,8 @@
     } catch (err) {
       console.error('[App] Delete failed:', err);
       showToast('注销失败: ' + err.message, 'error');
+    } finally {
+      _deleting.delete(alias);
     }
   }
 

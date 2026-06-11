@@ -17,7 +17,7 @@ const http = require('http');
 
 // ── Configuration ───────────────────────────────────────────────────────────
 const API_HOST = '127.0.0.1';
-const API_PORT = 8080;
+const API_PORT = 18990;
 const API_BASE = `http://${API_HOST}:${API_PORT}`;
 const BACKEND_READY_TIMEOUT_MS = 30000;
 const BACKEND_READY_POLL_MS = 500;

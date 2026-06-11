@@ -35,7 +35,7 @@ class APIServer:
         harness: AgentHarness | None = None,
         provider: BaseProvider | None = None,
         host: str = "127.0.0.1",
-        port: int = 8080,
+        port: int = 18990,
     ) -> None:
         self._store = store
         self._metrics_store = metrics_store

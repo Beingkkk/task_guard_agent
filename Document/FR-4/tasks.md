@@ -122,7 +122,7 @@ T### [P?] [测试|实现|集成|文档] 简述
   - `start()` 方法启动 HTTP 服务
   - `stop()` 方法优雅关闭
   - 启动时自动加载 TaskStore、初始化 ToolRegistry
-- 验收：`python -m taskguard.api.server` 启动后 `curl http://localhost:8080/api/tasks` 返回 200
+- 验收：`python -m taskguard.api.server` 启动后 `curl http://localhost:18990/api/tasks` 返回 200
 
 ### T124 [实现] `AgentHarness` 增加 `event_publisher` 注入点
 - 关联：T113
@@ -204,7 +204,7 @@ T131 (静态检查)
 
 ## Phase 1 退出标准
 
-- [x] `python -m taskguard.api.server` 可启动并监听 `localhost:8080`
+- [x] `python -m taskguard.api.server` 可启动并监听 `localhost:18990`
 - [x] REST API 所有端点通过 curl/httpx 验证
 - [x] WebSocket 事件推送通过测试验证
 - [x] `AgentHarness` 采集后自动发布事件
@@ -248,7 +248,7 @@ T131 (静态检查)
 - 关联：plan §9.2
 - 文件：`frontend/renderer/services/websocket.js`
 - 实现：
-  - 主进程维护 `ws` 客户端连接 `ws://localhost:8080/ws`
+  - 主进程维护 `ws` 客户端连接 `ws://localhost:18990/ws`
   - 收到消息后通过 IPC 转发给渲染进程
   - 断线自动重连（3s 间隔）
   - 渲染进程 `WsService` 提供事件订阅 API

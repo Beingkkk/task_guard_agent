@@ -366,7 +366,7 @@ python -c "
 import asyncio, httpx
 async def main():
     async with httpx.AsyncClient() as c:
-        r = await c.post('http://localhost:8080/api/tasks', json={
+        r = await c.post('http://localhost:18990/api/tasks', json={
             'alias': 'test_alert',
             'log': 'file://mock.log',
             'pid': 99999  # 不存在的 PID，触发 process_exited
@@ -376,11 +376,11 @@ asyncio.run(main())
 "
 
 # 3. 等待一个采集周期（30s），检查告警
-curl http://localhost:8080/api/tasks/test_alert/alerts
+curl http://localhost:18990/api/tasks/test_alert/alerts
 # 期望看到 process_exited CRITICAL 告警
 
 # 4. 清理
-curl -X DELETE http://localhost:8080/api/tasks/test_alert
+curl -X DELETE http://localhost:18990/api/tasks/test_alert
 kill $PID
 ```
 

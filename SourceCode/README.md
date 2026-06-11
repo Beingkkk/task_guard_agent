@@ -16,7 +16,7 @@ pip install -e ".[dev]"
 python -m taskguard.api.server
 ```
 
-服务默认监听 `http://localhost:8080`。
+服务默认监听 `http://localhost:18990`。
 
 ## 以库方式使用 AgentHarness
 

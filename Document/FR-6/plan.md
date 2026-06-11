@@ -439,7 +439,7 @@ source python-runtime/Scripts/activate
 python -m taskguard.api.server
 
 # 2. 注册一个带 PID 的任务
-curl -X POST http://localhost:8080/api/tasks \
+curl -X POST http://localhost:18990/api/tasks \
   -H "Content-Type: application/json" \
   -d '{"alias":"smoke_crash","log":"C:\\data\\smoke.log","pid":12345}'
 

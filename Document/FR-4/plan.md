@@ -66,7 +66,7 @@ FR-4 本身不做采集、不做进度解析、不做告警规则判断，只负
 ### 2.3 验收标准 (Acceptance Criteria)
 
 **Phase 1（后端）**：
-- [x] `python -m taskguard.api.server` 启动后，监听 `localhost:8080`
+- [x] `python -m taskguard.api.server` 启动后，监听 `localhost:18990`
 - [x] `GET /api/tasks` 返回所有任务列表（JSON）
 - [x] `POST /api/tasks` 可注册新任务，成功后返回 201
 - [x] `DELETE /api/tasks/{alias}` 可注销任务，成功后返回 204
@@ -201,7 +201,7 @@ class APIServer:
         harness: AgentHarness | None = None,
     ) -> None: ...
 
-    async def start(self, host: str = "127.0.0.1", port: int = 8080) -> None: ...
+    async def start(self, host: str = "127.0.0.1", port: int = 18990) -> None: ...
     async def stop(self) -> None: ...
 ```
 
@@ -241,7 +241,7 @@ class EventPublisher:
 
 ### 6.5.4 WebSocket 契约
 
-**连接**: `ws://localhost:8080/ws`
+**连接**: `ws://localhost:18990/ws`
 
 **协议**: 自定义 JSON，前端连接后自动订阅所有事件。
 
@@ -401,7 +401,7 @@ class IntentParser:
 
 ### 7.2 WebSocket 事件契约
 
-客户端连接 `ws://localhost:8080/ws` 后，服务端推送以下事件：
+客户端连接 `ws://localhost:18990/ws` 后，服务端推送以下事件：
 
 ```json
 // task.updated — 采集周期完成
@@ -483,7 +483,7 @@ class IntentParser:
 class APIServer:
     def __init__(self, harness: AgentHarness, store: TaskStore, ...) -> None: ...
 
-    async def start(self, host: str = "127.0.0.1", port: int = 8080) -> None: ...
+    async def start(self, host: str = "127.0.0.1", port: int = 18990) -> None: ...
     async def stop(self) -> None: ...
 ```
 
@@ -694,21 +694,21 @@ python -m taskguard.api.server
 
 # 2. 另开终端，测试 API
 # 列出任务
-curl http://localhost:8080/api/tasks
+curl http://localhost:18990/api/tasks
 
 # 注册任务
-curl -X POST http://localhost:8080/api/tasks \
+curl -X POST http://localhost:18990/api/tasks \
   -H "Content-Type: application/json" \
   -d '{"alias":"smoke","log":"C:\\data\\smoke.log","pid":12345}'
 
 # 查询状态
-curl http://localhost:8080/api/tasks/smoke/status
+curl http://localhost:18990/api/tasks/smoke/status
 
 # 注销任务
-curl -X DELETE http://localhost:8080/api/tasks/smoke
+curl -X DELETE http://localhost:18990/api/tasks/smoke
 
 # 3. WebSocket 测试（用 wscat 或浏览器控制台）
-# 连接 ws://localhost:8080/ws，观察 task.updated 事件
+# 连接 ws://localhost:18990/ws，观察 task.updated 事件
 ```
 
 ### Phase 3（前端）

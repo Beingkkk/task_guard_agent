@@ -286,7 +286,7 @@ class MetricsStore:
 ## 3. REST API 契约
 
 **来源**: FR-4 plan §7（待补充）  
-**基础 URL**: `http://localhost:8080`
+**基础 URL**: `http://localhost:18990`
 
 | 方法 | 路径 | 输入 | 输出 | 状态码 |
 |------|------|------|------|--------|
@@ -299,7 +299,7 @@ class MetricsStore:
 | POST | `/api/collect` | — | 采集摘要 | 200 |
 | POST | `/api/natural` | `{text: str}` | 意图解析结果 | 200 |
 
-**WebSocket**: `ws://localhost:8080/ws`
+**WebSocket**: `ws://localhost:18990/ws`
 - 连接后自动订阅所有事件
 - 事件格式: `{type: "task.updated" | "task.alert" | "task.oom", data: {...}}`
 

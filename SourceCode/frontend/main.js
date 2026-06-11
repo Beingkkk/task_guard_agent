@@ -175,6 +175,36 @@ function connectWebSocket() {
 // ── IPC Handlers ────────────────────────────────────────────────────────────
 
 /**
+ * Window controls from custom titlebar.
+ */
+ipcMain.handle('window:minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.handle('window:maximize', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.handle('window:close', () => {
+  if (mainWindow) {
+    app.isQuiting = true;
+    mainWindow.close();
+  }
+});
+
+ipcMain.on('window:listen-maximize', (event) => {
+  if (!mainWindow) return;
+  const send = () => event.sender.send('window:maximize-change', mainWindow.isMaximized());
+  mainWindow.on('maximize', send);
+  mainWindow.on('unmaximize', send);
+});
+
+/**
  * Proxy HTTP requests from renderer to Python backend.
  * renderer: window.electronAPI.invoke('api:request', { method, path, body })
  * main:     makes HTTP request, returns JSON
@@ -221,8 +251,9 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    title: 'TaskGuard',
-    icon: path.join(__dirname, 'assets', 'icon.png'),
+    title: '智能任务监视',
+    frame: false,
+    icon: path.join(__dirname, '..', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -251,8 +282,7 @@ function createWindow() {
 // ── Tray ────────────────────────────────────────────────────────────────────
 
 function createTray() {
-  const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
-  // Fallback to a 1x1 transparent PNG if icon doesn't exist yet
+  const iconPath = path.join(__dirname, '..', 'icon.png');
   tray = new Tray(iconPath);
 
   const contextMenu = Menu.buildFromTemplate([

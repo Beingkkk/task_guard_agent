@@ -24,9 +24,83 @@
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.4);
 
+  --titlebar-height: 32px;
   --header-height: 56px;
   --footer-height: 60px;
   --gap: 16px;
+}
+
+/* ── Custom Title Bar ──────────────────────────────────────────────────────── */
+.titlebar {
+  height: var(--titlebar-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.titlebar-drag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  height: 100%;
+  padding: 0 var(--gap);
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.titlebar-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.titlebar-text {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.titlebar-btn {
+  width: 46px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.titlebar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.titlebar-btn.titlebar-close:hover {
+  background: var(--color-danger);
+  color: white;
+}
+
+/* ── Maximized state: hide rounded corners if any ──────────────────────────── */
+body.maximized .titlebar {
+  border-radius: 0;
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────────── */
@@ -539,7 +613,7 @@ body {
 /* ── Toast ─────────────────────────────────────────────────────────────────── */
 .toast {
   position: fixed;
-  top: calc(var(--header-height) + 8px);
+  top: calc(var(--titlebar-height) + var(--header-height) + 8px);
   right: 16px;
   background: var(--bg-secondary);
   border-radius: var(--border-radius);

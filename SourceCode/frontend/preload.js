@@ -49,4 +49,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── App Info ──────────────────────────────────────────────────────────────
   getVersion: () => '0.1.0',
+
+  // ── Window Controls ───────────────────────────────────────────────────────
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
+  onMaximizeChange: (callback) => {
+    ipcRenderer.on('window:maximize-change', (_event, isMaximized) => callback(isMaximized));
+    ipcRenderer.send('window:listen-maximize');
+  },
 });

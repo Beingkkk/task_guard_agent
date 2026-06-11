@@ -197,10 +197,56 @@
     });
   }
 
+  // ── Title Bar ───────────────────────────────────────────────────────────────
+
+  function initTitleBar() {
+    const btnMin = document.getElementById('tb-minimize');
+    const btnMax = document.getElementById('tb-maximize');
+    const btnClose = document.getElementById('tb-close');
+    if (!btnMin || !btnMax || !btnClose) return;
+
+    btnMin.addEventListener('click', () => {
+      window.electronAPI?.minimizeWindow?.();
+    });
+
+    btnMax.addEventListener('click', () => {
+      window.electronAPI?.maximizeWindow?.();
+    });
+
+    btnClose.addEventListener('click', () => {
+      window.electronAPI?.closeWindow?.();
+    });
+
+    // Update maximize button icon based on state
+    if (window.electronAPI?.onMaximizeChange) {
+      window.electronAPI.onMaximizeChange((isMaximized) => {
+        const svg = btnMax.querySelector('svg');
+        if (!svg) return;
+        if (isMaximized) {
+          // Restore icon (overlapping squares)
+          svg.innerHTML = `
+            <rect x="2.5" y="2.5" width="4" height="4" fill="none" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="3.5" y="3.5" width="4" height="4" fill="none" stroke="currentColor" stroke-width="0.8"/>
+          `;
+          btnMax.title = '还原';
+          document.body.classList.add('maximized');
+        } else {
+          // Maximize icon (single square)
+          svg.innerHTML = `
+            <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/>
+          `;
+          btnMax.title = '最大化';
+          document.body.classList.remove('maximized');
+        }
+      });
+    }
+  }
+
   // ── Initialization ─────────────────────────────────────────────────────────
 
   function init() {
     console.log('[App] Initializing TaskGuard renderer...');
+    initTitleBar();
 
     // Initialize components
     taskGrid = new TaskGrid('task-grid', {

@@ -3,13 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TaskGuard</title>
+  <title>智能任务监视</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Custom Title Bar -->
+  <div class="titlebar" id="titlebar">
+    <div class="titlebar-drag">
+      <img src="../../icon.png" alt="icon" class="titlebar-icon">
+      <span class="titlebar-text">智能任务监视</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="tb-minimize" title="最小化">
+        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0" y="4" width="10" height="1" fill="currentColor"/></svg>
+      </button>
+      <button class="titlebar-btn" id="tb-maximize" title="最大化">
+        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+      </button>
+      <button class="titlebar-btn titlebar-close" id="tb-close" title="关闭">
+        <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1"/></svg>
+      </button>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="app-header">
-    <h1>TaskGuard</h1>
+    <h1></h1>
     <div class="header-actions">
       <span id="connection-status" class="status-dot offline" title="连接状态"></span>
       <button id="btn-add-task" class="btn btn-primary">+ 新增任务</button>

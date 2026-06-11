@@ -49,7 +49,7 @@ cd frontend
 npm run dev              # recommended; runs "electron . --dev"
 # Git Bash (npx electron may fall back to Node — avoid):
 cd frontend
-../node_modules/.bin/electron . --dev
+./node_modules/.bin/electron . --dev
 
 # Lint and format
 ruff format .
@@ -117,11 +117,15 @@ Title Bar (frameless, draggable)
 - `frontend/renderer/components/TaskGrid.js` — Grid container, empty-state toggle
 - `frontend/renderer/components/TaskDetailPanel.js` — Slide-out panel: task info + recent logs + `/api/tasks/{alias}/ask` LLM chat
 
+**Layout framework note:** The left panel and detail-ask panel rely on column flex containers where the scrollable middle section (`process-list`, `ask-history`) has `flex: 1` and bottom elements (`panel-footer`, `ask-input-bar`) have `flex-shrink: 0`. To prevent bottom elements from being pushed out of view, the parent chain (`body`, `.app-main`, `.left-panel`, `.right-panel`, `.detail-panel`) uses `height: 100dvh` and `min-height: 0` where appropriate.
+
+**Visual system:** The current UI follows the **Warm Sentinel** direction — warm obsidian backgrounds (`#151311`), terracotta accent (`#c87e5a`), sage/amber/brick status colors, hairline borders, and inline SVG icons. Avoid reintroducing emoji icons or the previous cool-blue palette.
+
 **Removed:** bottom natural-language input bar, add-task modal, progress display in detail panel (replaced by recent logs).
 
 ## API Service
 
-The Python backend runs an aiohttp server on `localhost:8080`:
+The Python backend runs an aiohttp server on `localhost:18990`:
 
 **REST API:**
 - `GET /api/tasks` — list all tasks
@@ -136,7 +140,7 @@ The Python backend runs an aiohttp server on `localhost:8080`:
 - `POST /api/collect` — manual collection trigger
 - `POST /api/natural` — natural language intent parsing (backend retains; frontend no longer uses)
 
-**WebSocket:** `ws://localhost:8080/ws` — real-time push events (`task.updated`, `task.alert`, `task.oom`)
+**WebSocket:** `ws://localhost:18990/ws` — real-time push events (`task.updated`, `task.alert`, `task.oom`)
 
 **Communication model:**
 - **HTTP** is the primary frontend→backend channel (REST API calls for all CRUD and queries).
@@ -151,7 +155,7 @@ The Python backend runs an aiohttp server on `localhost:8080`:
 3. Create BrowserWindow, load `renderer/index.html`
 4. Connect WebSocket client in main process, proxy messages to renderer via IPC
 
-If `ipcMain` is `undefined` at runtime, the script is being executed by Node instead of Electron (common in Git Bash when `npx electron` resolves incorrectly). Use `npm run dev` or the direct `electron` binary path.
+If `ipcMain` is `undefined` at runtime, the script is being executed by Node instead of Electron (common in Git Bash when `npx electron` resolves incorrectly). Use `npm run dev` or the direct `./node_modules/.bin/electron . --dev` path from `SourceCode/frontend/`.
 
 ## SDD (Spec-Driven Development)
 
@@ -387,7 +391,7 @@ server = APIServer(store, metrics, harness=harness)
 async def main():
     await store.load()
     await metrics.open()
-    await server.start(host="127.0.0.1", port=8080)
+    await server.start(host="127.0.0.1", port=18990)
     harness_task = asyncio.create_task(harness.run())
     try:
         await asyncio.Event().wait()

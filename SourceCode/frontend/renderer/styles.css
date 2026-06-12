@@ -180,6 +180,7 @@ body::before {
   border-radius: var(--border-radius-xs);
   background: transparent;
   transition: background 0.15s ease;
+  z-index: -1;
 }
 
 .titlebar-btn:hover::after {

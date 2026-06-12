@@ -192,8 +192,7 @@ ipcMain.handle('window:maximize', () => {
 
 ipcMain.handle('window:close', () => {
   if (mainWindow) {
-    app.isQuiting = true;
-    mainWindow.close();
+    mainWindow.hide();
   }
 });
 
@@ -294,7 +293,7 @@ function createWindow() {
     minHeight: 600,
     title: '智能任务监视',
     frame: false,
-    icon: path.join(__dirname, '..', 'icon.png'),
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -324,20 +323,47 @@ function createWindow() {
   });
 }
 
+/**
+ * Show/restore the main window from the tray.
+ * Recreates the window if it has been destroyed.
+ */
+function showMainWindow() {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+  mainWindow.focus();
+}
+
+/**
+ * Toggle the main window visibility from the tray.
+ * Shows/restores when hidden or minimized, hides when visible.
+ */
+function toggleMainWindow() {
+  if (!mainWindow || mainWindow.isMinimized() || !mainWindow.isVisible()) {
+    showMainWindow();
+  } else {
+    mainWindow.hide();
+  }
+}
+
 // ── Tray ────────────────────────────────────────────────────────────────────
 
 function createTray() {
-  const iconPath = path.join(__dirname, '..', 'icon.png');
+  const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
   tray = new Tray(iconPath);
 
   const contextMenu = Menu.buildFromTemplate([
     {
       label: '显示窗口',
       click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
+        showMainWindow();
       },
     },
     {
@@ -353,9 +379,11 @@ function createTray() {
   tray.setContextMenu(contextMenu);
 
   tray.on('click', () => {
-    if (mainWindow) {
-      mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-    }
+    toggleMainWindow();
+  });
+
+  tray.on('double-click', () => {
+    toggleMainWindow();
   });
 }
 

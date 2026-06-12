@@ -539,14 +539,6 @@ class TaskAskHandler:
             if metrics.get("exit_code") is not None:
                 lines.append(f"  - 退出码: {metrics['exit_code']}")
 
-        progress = task_data.get("latest_progress")
-        if progress:
-            lines.append("\n最新进度:")
-            lines.append(f"  - 完成度: {progress.get('percentage', 'N/A')}%")
-            lines.append(f"  - 速度: {progress.get('speed', 'N/A')}")
-            lines.append(f"  - 预计剩余: {progress.get('eta', 'N/A')}")
-            lines.append(f"  - 状态: {progress.get('status', 'N/A')}")
-
         state_summary = task_data.get("latest_state_summary")
         if state_summary:
             lines.append("\nAI 状态总结:")

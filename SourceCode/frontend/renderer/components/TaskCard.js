@@ -101,21 +101,13 @@ class TaskCard {
     this._els.memPct = el.querySelector('[data-key="memPct"]');
     this._els.logs = el.querySelector('.log-area');
 
-    // Static content that never changes
+    // Static content that rarely changes; still updated in _syncUI so replacement
+    // tasks (same alias, new PID/log path) render correctly.
     const alias = this._alias();
     this._els.title.textContent = alias;
     el.dataset.alias = alias;
 
-    const pid = this.task.pid || this.task.registered?.pid || '-';
-    this._els.pid.textContent = `PID: ${pid}`;
-
-    let logPath = '-';
-    if (this.task.log_source?.path) {
-      logPath = this.task.log_source.path.split('\\').pop() || this.task.log_source.path;
-    } else if (this.task.registered?.log_source?.paths) {
-      logPath = this.task.registered.log_source.paths[0]?.split('\\').pop() || '-';
-    }
-    this._els.logPath.textContent = logPath;
+    this._syncStaticInfo();
 
     // Events — bound once forever
     el.addEventListener('click', (e) => {
@@ -131,6 +123,23 @@ class TaskCard {
     this._syncUI();
   }
 
+  _syncStaticInfo() {
+    const pid = this.task.pid || this.task.registered?.pid || '-';
+    if (this._els.pid) {
+      this._els.pid.textContent = `PID: ${pid}`;
+    }
+
+    let logPath = '-';
+    if (this.task.log_source?.path) {
+      logPath = this.task.log_source.path.split('\\').pop() || this.task.log_source.path;
+    } else if (this.task.registered?.log_source?.paths) {
+      logPath = this.task.registered.log_source.paths[0]?.split('\\').pop() || '-';
+    }
+    if (this._els.logPath) {
+      this._els.logPath.textContent = logPath;
+    }
+  }
+
   /* ── Diff Sync (called on build + every update) ─────────────────────────── */
 
   _syncUI() {
@@ -141,6 +150,9 @@ class TaskCard {
     // Status class (border color)
     const statusClass = this._statusClass(metrics, data);
     this.element.className = `task-card ${statusClass}`;
+
+    // Update PID/log path in case the task was replaced with same alias
+    this._syncStaticInfo();
 
     // Last update time
     const lastUpdate = this._getLastUpdateTimestamp(this.task);

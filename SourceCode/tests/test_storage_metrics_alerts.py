@@ -32,9 +32,7 @@ class TestMetricsStoreAlerts:
         )
         await store.save_alert("dl", alert)
 
-        alerts = await store.query_alerts(
-            "dl", since=datetime.now(UTC) - timedelta(minutes=1)
-        )
+        alerts = await store.query_alerts("dl", since=datetime.now(UTC) - timedelta(minutes=1))
         assert len(alerts) == 1
         assert alerts[0]["rule"] == "cpu_high"
         assert alerts[0]["level"] == "WARNING"
@@ -61,9 +59,7 @@ class TestMetricsStoreAlerts:
     async def test_query_alerts_empty(self) -> None:
         store = MetricsStore(":memory:")
         await store.open()
-        alerts = await store.query_alerts(
-            "dl", since=datetime.now(UTC) - timedelta(minutes=1)
-        )
+        alerts = await store.query_alerts("dl", since=datetime.now(UTC) - timedelta(minutes=1))
         assert alerts == []
         await store.close()
 

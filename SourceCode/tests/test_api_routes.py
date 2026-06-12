@@ -132,13 +132,18 @@ class TestTasksRoutes:
     async def test_batch_status(self, client: TestClient, tmp_path: Path) -> None:
         """POST /api/tasks/batch-status returns statuses for multiple tasks."""
         for alias in ("batch-a", "batch-b"):
-            await client.post("/api/tasks", json={
-                "alias": alias,
-                "log": str(tmp_path / f"{alias}.log"),
-                "pid": 1000,
-            })
+            await client.post(
+                "/api/tasks",
+                json={
+                    "alias": alias,
+                    "log": str(tmp_path / f"{alias}.log"),
+                    "pid": 1000,
+                },
+            )
 
-        resp = await client.post("/api/tasks/batch-status", json={"aliases": ["batch-a", "batch-b", "missing"]})
+        resp = await client.post(
+            "/api/tasks/batch-status", json={"aliases": ["batch-a", "batch-b", "missing"]}
+        )
         assert resp.status == 200
         data = await resp.json()
         assert "tasks" in data
@@ -166,7 +171,10 @@ class TestCollectRoute:
 
 class TestNaturalRoute:
     async def test_natural_language_parses_and_executes(
-        self, client: TestClient, tmp_path: Path, api_app: Application,
+        self,
+        client: TestClient,
+        tmp_path: Path,
+        api_app: Application,
     ) -> None:
         """POST /api/natural parses intent and executes."""
         from taskguard.interaction.intent_parser import IntentParseResult
@@ -186,7 +194,9 @@ class TestNaturalRoute:
         assert data["intent"] == "list_tasks"
 
     async def test_natural_language_missing_params(
-        self, client: TestClient, api_app: Application,
+        self,
+        client: TestClient,
+        api_app: Application,
     ) -> None:
         """POST /api/natural with missing params returns missing_params."""
         from taskguard.interaction.intent_parser import IntentParseResult

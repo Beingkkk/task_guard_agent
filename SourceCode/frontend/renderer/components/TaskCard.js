@@ -59,6 +59,15 @@ class TaskCard {
           </button>
         </div>
       </div>
+      <div class="task-card-header-sub">
+        <span class="tc-last-update">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span class="tc-last-update-text">--:--:--</span>
+        </span>
+      </div>
       <div class="task-card-meta">
         <span class="tc-pid"></span>
         <span class="tc-log"></span>
@@ -87,6 +96,7 @@ class TaskCard {
 
     // Cache refs
     this._els.title = el.querySelector('.task-card-title');
+    this._els.lastUpdateText = el.querySelector('.tc-last-update-text');
     this._els.pid = el.querySelector('.tc-pid');
     this._els.logPath = el.querySelector('.tc-log');
     this._els.cpu = el.querySelector('[data-key="cpu"]');
@@ -138,6 +148,14 @@ class TaskCard {
     const statusClass = this._statusClass(metrics, progress, data);
     this.element.className = `task-card ${statusClass}`;
 
+    // Last update time
+    const lastUpdate = this._getLastUpdateTimestamp(this.task);
+    if (this._els.lastUpdateText) {
+      this._els.lastUpdateText.textContent = lastUpdate
+        ? lastUpdate.toLocaleTimeString('zh-CN')
+        : '--:--:--';
+    }
+
     // Loading vs real data
     const hasMetrics = metrics.cpu_percent != null || metrics.status != null;
     const showLoading = this._isLoading && !hasMetrics;
@@ -170,6 +188,13 @@ class TaskCard {
     }
     el.classList.remove('placeholder');
     el.textContent = value != null ? fmt(value) : '—';
+  }
+
+  _getLastUpdateTimestamp(data) {
+    const raw = data.timestamp || data.latest_metrics?.timestamp || data.latest_progress?.timestamp;
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
   }
 
   /* ── Helpers ────────────────────────────────────────────────────────────── */
@@ -211,10 +236,8 @@ class TaskCard {
     if (hasStatus) parts.push(`状态 ${progress.status}`);
 
     return `
-      <div class="progress-summary">
-        ${parts.length > 0 ? `<span class="progress-badge">${this._esc(parts.join(' | '))}</span>` : ''}
-        ${summary ? `<span class="progress-text">${this._esc(summary)}</span>` : ''}
-      </div>
+      ${parts.length > 0 ? `<div class="progress-summary"><span class="progress-badge">${this._esc(parts.join(' | '))}</span></div>` : ''}
+      ${summary ? `<div class="progress-description">${this._esc(summary)}</div>` : ''}
     `;
   }
 

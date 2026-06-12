@@ -13,6 +13,7 @@ class TaskGrid {
     this.cards = new Map(); // alias -> TaskCard
     this.onClick = options.onClick || (() => {});
     this.onDelete = options.onDelete || (() => {});
+    this.onTaskUpdated = options.onTaskUpdated || (() => {});
   }
 
   renderTasks(tasks) {
@@ -35,12 +36,15 @@ class TaskGrid {
     const alias = taskData.alias || taskData.registered?.alias;
     if (!alias) return;
 
-    if (this.cards.has(alias)) {
+    const isUpdate = this.cards.has(alias);
+    if (isUpdate) {
       this.cards.get(alias).update(taskData);
     } else {
       this._showEmpty(false);
       this._addCard(taskData);
     }
+
+    this.onTaskUpdated(alias, taskData, isUpdate);
   }
 
   removeTask(alias) {

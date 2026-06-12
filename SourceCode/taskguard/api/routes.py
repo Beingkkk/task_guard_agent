@@ -126,7 +126,9 @@ class TaskHandler:
 
         # Check if metrics_store is available
         metrics_store = request.app.get("metrics_store")
-        result = await tool.execute({"alias": alias, "_store": self._store, "_metrics_store": metrics_store})
+        result = await tool.execute(
+            {"alias": alias, "_store": self._store, "_metrics_store": metrics_store}
+        )
         if result.ok:
             data = result.data if isinstance(result.data, dict) else {}
             return json_response(data)
@@ -362,11 +364,13 @@ class TaskLogHandler:
         except OSError as exc:
             return error_response("read_error", f"Failed to read log: {exc}", 500)
 
-        return json_response({
-            "lines": lines,
-            "source": str(log_path),
-            "limit": limit,
-        })
+        return json_response(
+            {
+                "lines": lines,
+                "source": str(log_path),
+                "limit": limit,
+            }
+        )
 
     async def get_log_info(self, request: web.Request) -> web.Response:
         """GET /api/tasks/{alias}/log-info — get log source metadata."""
@@ -386,23 +390,27 @@ class TaskLogHandler:
         if log_source.is_dir:
             # Directory mode
             if source_path is None or not source_path.is_dir():
-                return json_response({
-                    "type": "dir",
-                    "path": log_source.path,
-                    "count": 0,
-                    "current_file": None,
-                })
+                return json_response(
+                    {
+                        "type": "dir",
+                        "path": log_source.path,
+                        "count": 0,
+                        "current_file": None,
+                    }
+                )
 
             extensions = log_source.extensions
             files = [p for p in source_path.iterdir() if p.is_file() and p.suffix in extensions]
             current_file = max(files, key=lambda p: p.stat().st_mtime) if files else None
 
-            return json_response({
-                "type": "dir",
-                "path": str(source_path),
-                "count": len(files),
-                "current_file": str(current_file) if current_file else None,
-            })
+            return json_response(
+                {
+                    "type": "dir",
+                    "path": str(source_path),
+                    "count": len(files),
+                    "current_file": str(current_file) if current_file else None,
+                }
+            )
 
         # File mode
         if source_path is None:
@@ -416,11 +424,13 @@ class TaskLogHandler:
         else:
             size = None
 
-        return json_response({
-            "type": "file",
-            "path": str(source_path),
-            "size": size,
-        })
+        return json_response(
+            {
+                "type": "file",
+                "path": str(source_path),
+                "size": size,
+            }
+        )
 
 
 class TaskAskHandler:
@@ -464,11 +474,23 @@ class TaskAskHandler:
             return error_response("tool_not_found", "query_status tool not found", 500)
 
         metrics_store = request.app.get("metrics_store")
-        result = await tool.execute({"alias": alias, "_store": self._store, "_metrics_store": metrics_store})
+        result = await tool.execute(
+            {"alias": alias, "_store": self._store, "_metrics_store": metrics_store}
+        )
         if not result.ok:
             return _tool_result_to_http(result)
 
         task_data = result.data if isinstance(result.data, dict) else {}
+
+        # Fetch recent alerts for additional context
+        recent_alerts: list[dict[str, Any]] = []
+        if metrics_store is not None:
+            try:
+                since = datetime.now(UTC) - timedelta(hours=1)
+                recent_alerts = await metrics_store.query_alerts(alias, since=since, limit=10)
+                task_data["recent_alerts"] = recent_alerts
+            except Exception:
+                logger.debug("Failed to load recent alerts for ask context")
 
         # Build context for LLM
         context = self._build_context(alias, task_data)
@@ -516,11 +538,26 @@ class TaskAskHandler:
             lines.append(f"  - 预计剩余: {progress.get('eta', 'N/A')}")
             lines.append(f"  - 状态: {progress.get('status', 'N/A')}")
 
+        state_summary = task_data.get("latest_state_summary")
+        if state_summary:
+            lines.append("\nAI 状态总结:")
+            lines.append(f"  - 状态: {state_summary.get('status', 'N/A')}")
+            lines.append(f"  - 总结: {state_summary.get('summary', 'N/A')}")
+            lines.append(f"  - 置信度: {state_summary.get('confidence', 'N/A')}")
+
         recent_logs = task_data.get("recent_logs")
         if recent_logs and recent_logs.get("lines"):
             lines.append("\n最近日志 (最多50行):")
             for line in recent_logs["lines"][-20:]:
                 lines.append(f"  {line}")
+
+        recent_alerts = task_data.get("recent_alerts")
+        if recent_alerts:
+            lines.append("\n最近告警:")
+            for alert in recent_alerts[-5:]:
+                lines.append(
+                    f"  - [{alert.get('level')}] {alert.get('rule')}: {alert.get('message')}"
+                )
 
         return "\n".join(lines)
 

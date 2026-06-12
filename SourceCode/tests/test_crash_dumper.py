@@ -21,9 +21,7 @@ def crash_tmp_path(tmp_path: Path) -> Path:
 
 
 class TestCrashDumperCore:
-    async def test_dump_on_exited_returns_path(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_dump_on_exited_returns_path(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path, max_dumps=10)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -33,11 +31,13 @@ class TestCrashDumperCore:
         )
         mock_metrics = MagicMock()
         mock_metrics.query_recent_log_lines = AsyncMock(return_value=["log1", "log2"])
-        mock_metrics.query_peak_metrics = AsyncMock(return_value={
-            "cpu_percent": 95.0,
-            "memory_working_set": 2147483648,
-            "memory_percent": 85.5,
-        })
+        mock_metrics.query_peak_metrics = AsyncMock(
+            return_value={
+                "cpu_percent": 95.0,
+                "memory_working_set": 2147483648,
+                "memory_percent": 85.5,
+            }
+        )
 
         result = await dumper.dump(task, snapshot, mock_metrics)
 
@@ -56,9 +56,7 @@ class TestCrashDumperCore:
         assert "metrics_timeline" in data
         assert "system_memory" in data
 
-    async def test_dump_on_running_returns_none(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_dump_on_running_returns_none(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -73,9 +71,7 @@ class TestCrashDumperCore:
         assert result is None
         assert not any(crash_tmp_path.iterdir())
 
-    async def test_dump_no_process_info_returns_none(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_dump_no_process_info_returns_none(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -89,9 +85,7 @@ class TestCrashDumperCore:
 
         assert result is None
 
-    async def test_dump_sets_crash_dumped_state(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_dump_sets_crash_dumped_state(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -132,9 +126,7 @@ class TestCrashDumperCore:
 
 
 class TestCrashDumperNoRepeat:
-    async def test_second_exited_does_not_dump_again(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_second_exited_does_not_dump_again(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -152,9 +144,7 @@ class TestCrashDumperNoRepeat:
         result2 = await dumper.dump(task, snapshot, mock_metrics)
         assert result2 is None
 
-    async def test_exited_with_none_exit_code_still_dumps(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_exited_with_none_exit_code_still_dumps(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -175,9 +165,7 @@ class TestCrashDumperNoRepeat:
 
 
 class TestCrashDumperCleanup:
-    async def test_exceed_max_dumps_deletes_oldest(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_exceed_max_dumps_deletes_oldest(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path, max_dumps=3)
         mock_metrics = MagicMock()
         mock_metrics.query_recent_log_lines = AsyncMock(return_value=[])
@@ -185,7 +173,9 @@ class TestCrashDumperCleanup:
 
         files: list[Path] = []
         for i in range(5):
-            task = Task(alias=f"task_{i}", log_source=LogSource(type="file", path=f"C:\\test{i}.log"))
+            task = Task(
+                alias=f"task_{i}", log_source=LogSource(type="file", path=f"C:\\test{i}.log")
+            )
             snapshot = Snapshot(
                 task_alias=f"task_{i}",
                 log_lines=["ERROR"],
@@ -205,16 +195,16 @@ class TestCrashDumperCleanup:
         assert files[3].exists()
         assert files[4].exists()
 
-    async def test_max_dumps_zero_no_cleanup(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_max_dumps_zero_no_cleanup(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path, max_dumps=0)
         mock_metrics = MagicMock()
         mock_metrics.query_recent_log_lines = AsyncMock(return_value=[])
         mock_metrics.query_peak_metrics = AsyncMock(return_value={})
 
         for i in range(3):
-            task = Task(alias=f"task_{i}", log_source=LogSource(type="file", path=f"C:\\test{i}.log"))
+            task = Task(
+                alias=f"task_{i}", log_source=LogSource(type="file", path=f"C:\\test{i}.log")
+            )
             snapshot = Snapshot(
                 task_alias=f"task_{i}",
                 log_lines=["ERROR"],
@@ -226,9 +216,7 @@ class TestCrashDumperCleanup:
         remaining = list(crash_tmp_path.glob("*.json"))
         assert len(remaining) == 3
 
-    async def test_cleanup_preserves_non_json_files(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_cleanup_preserves_non_json_files(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path, max_dumps=1)
         mock_metrics = MagicMock()
         mock_metrics.query_recent_log_lines = AsyncMock(return_value=[])
@@ -261,9 +249,7 @@ class TestCrashDumperCleanup:
 
 
 class TestCrashDumpContent:
-    async def test_peak_metrics_in_content(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_peak_metrics_in_content(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -273,11 +259,13 @@ class TestCrashDumpContent:
         )
         mock_metrics = MagicMock()
         mock_metrics.query_recent_log_lines = AsyncMock(return_value=["recent_log"])
-        mock_metrics.query_peak_metrics = AsyncMock(return_value={
-            "cpu_percent": 99.9,
-            "memory_working_set": 4294967296,
-            "memory_percent": 95.0,
-        })
+        mock_metrics.query_peak_metrics = AsyncMock(
+            return_value={
+                "cpu_percent": 99.9,
+                "memory_working_set": 4294967296,
+                "memory_percent": 95.0,
+            }
+        )
 
         result = await dumper.dump(task, snapshot, mock_metrics)
 
@@ -288,9 +276,7 @@ class TestCrashDumpContent:
         assert data["peak_memory_percent"] == 95.0
         assert data["last_logs"] == ["recent_log"]
 
-    async def test_metrics_timeline_in_content(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_metrics_timeline_in_content(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(
@@ -302,20 +288,22 @@ class TestCrashDumpContent:
         mock_metrics = MagicMock()
         mock_metrics.query_recent_log_lines = AsyncMock(return_value=[])
         mock_metrics.query_peak_metrics = AsyncMock(return_value={})
-        mock_metrics.query_metrics = AsyncMock(return_value=[
-            {
-                "timestamp": "2026-05-30T09:55:00Z",
-                "cpu_percent": 80.0,
-                "memory_working_set": 2000000000,
-                "memory_percent": 50.0,
-            },
-            {
-                "timestamp": "2026-05-30T09:58:00Z",
-                "cpu_percent": 95.0,
-                "memory_working_set": 2100000000,
-                "memory_percent": 55.0,
-            },
-        ])
+        mock_metrics.query_metrics = AsyncMock(
+            return_value=[
+                {
+                    "timestamp": "2026-05-30T09:55:00Z",
+                    "cpu_percent": 80.0,
+                    "memory_working_set": 2000000000,
+                    "memory_percent": 50.0,
+                },
+                {
+                    "timestamp": "2026-05-30T09:58:00Z",
+                    "cpu_percent": 95.0,
+                    "memory_working_set": 2100000000,
+                    "memory_percent": 55.0,
+                },
+            ]
+        )
 
         result = await dumper.dump(task, snapshot, mock_metrics)
 
@@ -324,9 +312,7 @@ class TestCrashDumpContent:
         assert len(data["metrics_timeline"]) == 2
         assert data["metrics_timeline"][0]["cpu_percent"] == 80.0
 
-    async def test_system_memory_in_content(
-        self, crash_tmp_path: Path
-    ) -> None:
+    async def test_system_memory_in_content(self, crash_tmp_path: Path) -> None:
         dumper = CrashDumper(crash_tmp_path)
         task = Task(alias="test_task", log_source=LogSource(type="file", path="C:\\test.log"))
         snapshot = Snapshot(

@@ -23,6 +23,8 @@ class TestConfigLoader:
                 "min_interval": 30,
                 "max_log_lines": 40,
                 "regex_threshold": 0.7,
+                "state_analysis_enabled": True,
+                "state_analysis_interval": 120,
             },
         }
         (config_dir / "config.yaml").write_text(yaml.dump(config_yaml))
@@ -44,6 +46,8 @@ class TestConfigLoader:
         assert cfg.llm.min_interval == 30
         assert cfg.llm.max_log_lines == 40
         assert cfg.llm.regex_threshold == 0.7
+        assert cfg.llm.state_analysis_enabled is True
+        assert cfg.llm.state_analysis_interval == 120
         assert isinstance(cfg.crash, CrashConfig)
         assert cfg.crash.max_dumps == 10
         assert cfg.crash.log_lines == 500

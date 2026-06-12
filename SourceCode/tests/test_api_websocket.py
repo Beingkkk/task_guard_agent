@@ -40,7 +40,9 @@ class TestWebSocket:
         async with ws_client.ws_connect("/ws") as ws:
             assert ws.closed is False
 
-    async def test_websocket_receives_events(self, ws_app: Application, ws_client: TestClient) -> None:
+    async def test_websocket_receives_events(
+        self, ws_app: Application, ws_client: TestClient
+    ) -> None:
         """Published events are broadcast to WebSocket clients."""
         publisher: EventPublisher = ws_app["event_publisher"]
 
@@ -51,7 +53,9 @@ class TestWebSocket:
             assert msg["type"] == "task.updated"
             assert msg["data"]["alias"] == "test"
 
-    async def test_multiple_clients_receive_events(self, ws_app: Application, ws_client: TestClient) -> None:
+    async def test_multiple_clients_receive_events(
+        self, ws_app: Application, ws_client: TestClient
+    ) -> None:
         """Events are broadcast to all connected clients."""
         publisher: EventPublisher = ws_app["event_publisher"]
 
@@ -64,7 +68,9 @@ class TestWebSocket:
             assert msg1["type"] == "task.updated"
             assert msg2["type"] == "task.updated"
 
-    async def test_client_disconnect_cleanup(self, ws_app: Application, ws_client: TestClient) -> None:
+    async def test_client_disconnect_cleanup(
+        self, ws_app: Application, ws_client: TestClient
+    ) -> None:
         """Disconnected clients are removed from active set."""
         ws_manager: WebSocketManager = ws_app["ws_manager"]
 

@@ -20,6 +20,8 @@ class LLMConfig:
     min_interval: int = 60
     max_log_lines: int = 50
     regex_threshold: float = 0.6
+    state_analysis_enabled: bool = True
+    state_analysis_interval: int = 60
 
 
 @dataclass
@@ -79,6 +81,8 @@ class ConfigLoader:
             min_interval=llm_cfg.get("min_interval", 60),
             max_log_lines=llm_cfg.get("max_log_lines", 50),
             regex_threshold=llm_cfg.get("regex_threshold", 0.6),
+            state_analysis_enabled=llm_cfg.get("state_analysis_enabled", True),
+            state_analysis_interval=llm_cfg.get("state_analysis_interval", 60),
         )
 
         return AppConfig(

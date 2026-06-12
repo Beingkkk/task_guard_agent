@@ -280,7 +280,9 @@ class TestAnalyzerInjection:
 
         mock_analyzer = MagicMock()
 
-        async def analyze_side_effect(task: Task, snapshot: Snapshot) -> ProgressInfo | None:
+        async def analyze_side_effect(
+            task: Task, snapshot: Snapshot, **kwargs
+        ) -> ProgressInfo | None:
             if task.alias == "bad":
                 raise RuntimeError("analyzer boom")
             return ProgressInfo(percentage=99.0, extracted_by="regex")
@@ -298,7 +300,9 @@ class TestAnalyzerInjection:
 
 class TestEventPublisherInjection:
     async def test_event_publisher_called_after_collection(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """event_publisher is called after each task collection."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
@@ -330,7 +334,9 @@ class TestEventPublisherInjection:
         await harness._cleanup()
 
     async def test_event_publisher_none_no_error(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """event_publisher=None does not raise."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
@@ -350,7 +356,9 @@ class TestEventPublisherInjection:
 
 class TestAlerterInjection:
     async def test_alerter_called_and_alerts_attached(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """alerter.evaluate() is called and alerts attached to snapshot."""
         from taskguard.models.alert import Alert
@@ -367,7 +375,12 @@ class TestAlerterInjection:
         mock_alerter = MagicMock()
         mock_alerter.evaluate = AsyncMock(
             return_value=[
-                Alert(rule="cpu_high", level="WARNING", message="CPU high", timestamp=datetime.now(UTC)),
+                Alert(
+                    rule="cpu_high",
+                    level="WARNING",
+                    message="CPU high",
+                    timestamp=datetime.now(UTC),
+                ),
             ]
         )
         harness.alerter = mock_alerter
@@ -384,7 +397,9 @@ class TestAlerterInjection:
         await harness._cleanup()
 
     async def test_alerter_none_no_error(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """alerter=None does not raise."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"))
@@ -404,7 +419,9 @@ class TestAlerterInjection:
         await harness._cleanup()
 
     async def test_alerter_publishes_task_alert_events(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """Alerts trigger task.alert events via event_publisher."""
         from taskguard.models.alert import Alert
@@ -421,7 +438,12 @@ class TestAlerterInjection:
         mock_alerter = MagicMock()
         mock_alerter.evaluate = AsyncMock(
             return_value=[
-                Alert(rule="cpu_high", level="WARNING", message="CPU high", timestamp=datetime.now(UTC)),
+                Alert(
+                    rule="cpu_high",
+                    level="WARNING",
+                    message="CPU high",
+                    timestamp=datetime.now(UTC),
+                ),
             ]
         )
         harness.alerter = mock_alerter
@@ -436,8 +458,7 @@ class TestAlerterInjection:
 
         # Should publish task.alert event
         alert_calls = [
-            call for call in mock_publisher.publish.call_args_list
-            if call[0][0] == "task.alert"
+            call for call in mock_publisher.publish.call_args_list if call[0][0] == "task.alert"
         ]
         assert len(alert_calls) == 1
         assert alert_calls[0][0][1]["rule"] == "cpu_high"
@@ -445,7 +466,9 @@ class TestAlerterInjection:
         await harness._cleanup()
 
     async def test_alerter_no_longer_sends_oom_event(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """Alerter no longer sends task.oom — that's crash_handler's job (FR-6)."""
         from taskguard.models.alert import Alert
@@ -482,8 +505,7 @@ class TestAlerterInjection:
         await harness.run_once()
 
         oom_calls = [
-            call for call in mock_publisher.publish.call_args_list
-            if call[0][0] == "task.oom"
+            call for call in mock_publisher.publish.call_args_list if call[0][0] == "task.oom"
         ]
         assert len(oom_calls) == 0  # alerter no longer sends task.oom
         await harness._cleanup()
@@ -491,7 +513,9 @@ class TestAlerterInjection:
 
 class TestCrashHandlerInjection:
     async def test_crash_handler_called_with_metrics_store(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """crash_handler.dump() receives metrics_store and is called on exited."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
@@ -522,7 +546,9 @@ class TestCrashHandlerInjection:
         await harness._cleanup()
 
     async def test_crash_handler_returns_path_publishes_oom_event(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """When crash_handler returns a Path, task.oom event is published with dump_path."""
         from pathlib import Path as SystemPath
@@ -553,8 +579,7 @@ class TestCrashHandlerInjection:
             await harness.run_once()
 
         oom_calls = [
-            call for call in mock_publisher.publish.call_args_list
-            if call[0][0] == "task.oom"
+            call for call in mock_publisher.publish.call_args_list if call[0][0] == "task.oom"
         ]
         assert len(oom_calls) == 1
         assert oom_calls[0][0][1]["alias"] == "a"
@@ -565,7 +590,9 @@ class TestCrashHandlerInjection:
         await harness._cleanup()
 
     async def test_crash_handler_returns_none_no_oom_event(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """When crash_handler returns None, no task.oom event is sent."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
@@ -593,14 +620,15 @@ class TestCrashHandlerInjection:
             await harness.run_once()
 
         oom_calls = [
-            call for call in mock_publisher.publish.call_args_list
-            if call[0][0] == "task.oom"
+            call for call in mock_publisher.publish.call_args_list if call[0][0] == "task.oom"
         ]
         assert len(oom_calls) == 0
         await harness._cleanup()
 
     async def test_crash_handler_none_no_error(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """crash_handler=None does not raise on exited process."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
@@ -624,7 +652,9 @@ class TestCrashHandlerInjection:
         await harness._cleanup()
 
     async def test_crash_handler_exception_isolated(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """crash_handler exception does not break the collection cycle."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
@@ -653,14 +683,15 @@ class TestCrashHandlerInjection:
 
         # task.updated should still be published
         updated_calls = [
-            call for call in mock_publisher.publish.call_args_list
-            if call[0][0] == "task.updated"
+            call for call in mock_publisher.publish.call_args_list if call[0][0] == "task.updated"
         ]
         assert len(updated_calls) == 1
         await harness._cleanup()
 
     async def test_crash_handler_not_called_when_running(
-        self, mock_store: MagicMock, mock_metrics_store: MagicMock,
+        self,
+        mock_store: MagicMock,
+        mock_metrics_store: MagicMock,
     ) -> None:
         """crash_handler is not called when process status is running."""
         task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)

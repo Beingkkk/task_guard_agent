@@ -12,6 +12,7 @@ import aiosqlite
 
 from taskguard.models.alert import Alert
 from taskguard.models.snapshot import ProgressInfo, Snapshot
+from taskguard.models.state_summary import StateSummary
 
 __all__ = ["MetricsStore"]
 
@@ -48,6 +49,18 @@ CREATE TABLE IF NOT EXISTS progress (
     extracted_by TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_progress_alias_time ON progress(alias, timestamp);
+
+CREATE TABLE IF NOT EXISTS state_summary (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    status TEXT,
+    summary TEXT,
+    indicators TEXT,
+    confidence REAL,
+    analyzed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_state_summary_alias_time ON state_summary(alias, timestamp);
 
 CREATE TABLE IF NOT EXISTS llm_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,9 +104,7 @@ class MetricsStore:
     async def _migrate_metrics_table(self) -> None:
         """Add missing columns to the metrics table (idempotent)."""
         assert self._conn is not None
-        async with self._conn.execute(
-            "PRAGMA table_info(metrics)"
-        ) as cursor:
+        async with self._conn.execute("PRAGMA table_info(metrics)") as cursor:
             rows = await cursor.fetchall()
             existing_columns = {row[1] for row in rows}
         # Columns that may be missing in older databases
@@ -103,9 +114,7 @@ class MetricsStore:
         ]
         for col_name, col_type in migrations:
             if col_name not in existing_columns:
-                await self._conn.execute(
-                    f"ALTER TABLE metrics ADD COLUMN {col_name} {col_type}"
-                )
+                await self._conn.execute(f"ALTER TABLE metrics ADD COLUMN {col_name} {col_type}")
 
     async def close(self) -> None:
         """Close connection."""
@@ -222,6 +231,60 @@ class MetricsStore:
         ):
             pass
         await self._conn.commit()
+
+    async def save_state_summary(
+        self,
+        alias: str,
+        timestamp: datetime,
+        state_summary: StateSummary,
+    ) -> None:
+        """Persist a state summary result."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        ts = timestamp.isoformat()
+        async with self._conn.execute(
+            "INSERT INTO state_summary (alias, timestamp, status, summary, indicators, confidence, analyzed_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                alias,
+                ts,
+                state_summary.status,
+                state_summary.summary,
+                json.dumps(state_summary.indicators),
+                state_summary.confidence,
+                state_summary.analyzed_by,
+            ),
+        ):
+            pass
+        await self._conn.commit()
+
+    async def query_state_summary(
+        self,
+        alias: str,
+        since: datetime,
+        until: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return state summary rows for alias in time range."""
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        since_str = since.isoformat()
+        if until is not None:
+            until_str = until.isoformat()
+            query = (
+                "SELECT id, alias, timestamp, status, summary, indicators, confidence, analyzed_by FROM state_summary "
+                "WHERE alias = ? AND timestamp >= ? AND timestamp <= ? "
+                "ORDER BY timestamp"
+            )
+            params: tuple[Any, ...] = (alias, since_str, until_str)
+        else:
+            query = (
+                "SELECT id, alias, timestamp, status, summary, indicators, confidence, analyzed_by FROM state_summary "
+                "WHERE alias = ? AND timestamp >= ? ORDER BY timestamp"
+            )
+            params = (alias, since_str)
+        async with self._conn.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            cols = [d[0] for d in cursor.description]
+            return [dict(zip(cols, row, strict=False)) for row in rows]
 
     async def save_llm_usage(
         self,
@@ -375,10 +438,7 @@ class MetricsStore:
         if field not in allowed_fields:
             raise ValueError(f"Invalid field: {field}")
 
-        query = (
-            f"SELECT {field} FROM metrics "
-            "WHERE alias = ? AND timestamp >= ? AND timestamp <= ?"
-        )
+        query = f"SELECT {field} FROM metrics WHERE alias = ? AND timestamp >= ? AND timestamp <= ?"
         params = (alias, since_str, before_str)
 
         async with self._conn.execute(query, params) as cursor:
@@ -411,9 +471,7 @@ class MetricsStore:
         """
         if self._conn is None:
             raise RuntimeError("Store not open")
-        query = (
-            "SELECT lines FROM logs WHERE alias = ? ORDER BY timestamp DESC LIMIT ?"
-        )
+        query = "SELECT lines FROM logs WHERE alias = ? ORDER BY timestamp DESC LIMIT ?"
         params: tuple[Any, ...] = (alias, limit * 2)  # Fetch more rows to ensure enough lines
         lines: list[str] = []
         async with self._conn.execute(query, params) as cursor:
@@ -447,10 +505,7 @@ class MetricsStore:
         since_str = since.isoformat()
         results: dict[str, Any] = {}
         for field in valid_fields:
-            query = (
-                f"SELECT MAX({field}) FROM metrics "
-                "WHERE alias = ? AND timestamp >= ?"
-            )
+            query = f"SELECT MAX({field}) FROM metrics WHERE alias = ? AND timestamp >= ?"
             async with self._conn.execute(query, (alias, since_str)) as cursor:
                 row = await cursor.fetchone()
                 if row and row[0] is not None:

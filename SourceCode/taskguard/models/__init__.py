@@ -13,6 +13,7 @@ from taskguard.models.errors import (
     TaskRegistrationError,
 )
 from taskguard.models.snapshot import ProcessInfo, ProgressInfo, Snapshot
+from taskguard.models.state_summary import StateSummary
 from taskguard.models.task import LogSource, Task, TaskConfig
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "ProcessInfo",
     "ProgressInfo",
     "Snapshot",
+    "StateSummary",
     "Task",
     "TaskConfig",
     "TaskGuardError",

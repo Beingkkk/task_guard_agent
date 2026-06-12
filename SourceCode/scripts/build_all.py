@@ -65,6 +65,7 @@ def _hr() -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _run(cmd: list[str], cwd: Path, *, capture: bool = False) -> subprocess.CompletedProcess[str]:
     """Run a command with optional output capture."""
     if capture:
@@ -121,9 +122,10 @@ def _check_node_deps(source_dir: Path) -> bool:
         _p("ERR", "frontend/node_modules not found")
         _p("INFO", "Run: cd frontend && npm install")
         return False
-    if not (frontend / "node_modules" / ".bin" / "electron-builder").exists() and not (
-        frontend / "node_modules" / "electron-builder" / "package.json"
-    ).exists():
+    if (
+        not (frontend / "node_modules" / ".bin" / "electron-builder").exists()
+        and not (frontend / "node_modules" / "electron-builder" / "package.json").exists()
+    ):
         _p("ERR", "electron-builder not found in frontend/node_modules")
         _p("INFO", "Run: cd frontend && npm install -D electron-builder")
         return False
@@ -175,6 +177,7 @@ def _check_prerequisites(source_dir: Path) -> bool:
 
 
 # ── Build Steps ───────────────────────────────────────────────────────────────
+
 
 def build_backend(source_dir: Path, version: str) -> int:
     """Step 1: Build Python backend executable."""
@@ -250,7 +253,9 @@ def print_summary(source_dir: Path, version: str, total_time: float) -> None:
     for f in sorted(files):
         size_mb = f.stat().st_size / (1024 * 1024)
         rel = f.relative_to(dist)
-        kind = "Installer" if "Setup" in f.name else ("Portable" if "Portable" in f.name else "Other")
+        kind = (
+            "Installer" if "Setup" in f.name else ("Portable" if "Portable" in f.name else "Other")
+        )
         _p("OUT", f"{rel}  ({size_mb:.1f} MB)  [{kind}]")
     _hr()
 
@@ -265,7 +270,9 @@ def main() -> NoReturn:
 
     print()
     print(f"  {_C.BOLD}╔══════════════════════════════════════════════════════════════╗{_C.RESET}")
-    print(f"  {_C.BOLD}║        TaskGuard Unified Build  v{version:<8}                  ║{_C.RESET}")
+    print(
+        f"  {_C.BOLD}║        TaskGuard Unified Build  v{version:<8}                  ║{_C.RESET}"
+    )
     print(f"  {_C.BOLD}╚══════════════════════════════════════════════════════════════╝{_C.RESET}")
     print(f"  Source: {source_dir}")
 

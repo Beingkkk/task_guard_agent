@@ -20,7 +20,11 @@ class TestCrashDump:
             peak_memory=2147483648,
             peak_memory_percent=85.5,
             metrics_timeline=[
-                {"timestamp": "2026-05-30T09:59:00Z", "cpu_percent": 90.0, "memory_working_set": 2000000000},
+                {
+                    "timestamp": "2026-05-30T09:59:00Z",
+                    "cpu_percent": 90.0,
+                    "memory_working_set": 2000000000,
+                },
             ],
             system_memory={"total": 8589934592, "available": 1073741824, "percent_used": 87.5},
             reason="process_exited",

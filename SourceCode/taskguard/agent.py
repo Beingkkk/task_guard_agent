@@ -5,6 +5,7 @@ Relates-to: FR-2
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from taskguard.collectors.base import BaseCollector
@@ -129,10 +130,26 @@ class AgentHarness:
         # Injection point-2: analyzer
         if self.analyzer is not None:
             try:
-                snapshot.progress = await self.analyzer.analyze(task, snapshot)
+                # Fetch recent alerts to include as state-analysis context
+                recent_alerts: list[dict[str, Any]] = []
+                try:
+                    since = datetime.now(UTC) - timedelta(hours=1)
+                    recent_alerts = await self._metrics_store.query_alerts(
+                        task.alias, since=since, limit=10
+                    )
+                except Exception:
+                    logger.debug("Failed to load recent alerts for %s", task.alias)
+
+                snapshot.progress = await self.analyzer.analyze(
+                    task, snapshot, recent_alerts=recent_alerts
+                )
                 if snapshot.progress is not None:
                     await self._metrics_store.save_progress(
                         task.alias, snapshot.timestamp, snapshot.progress
+                    )
+                if snapshot.state_summary is not None:
+                    await self._metrics_store.save_state_summary(
+                        task.alias, snapshot.timestamp, snapshot.state_summary
                     )
             except Exception:
                 logger.exception("Analyzer failed for %s", task.alias)
@@ -145,7 +162,9 @@ class AgentHarness:
                 from taskguard.alerters.engine import AlertEngine
 
                 if isinstance(self.alerter, AlertEngine):
-                    alerts = await self.alerter.evaluate_and_persist(task, snapshot, self._metrics_store)
+                    alerts = await self.alerter.evaluate_and_persist(
+                        task, snapshot, self._metrics_store
+                    )
                 else:
                     alerts = await self.alerter.evaluate(task, snapshot)
                     snapshot.alerts = alerts
@@ -189,6 +208,14 @@ class AgentHarness:
                         "raw_summary": snapshot.progress.raw_summary,
                         "confidence": snapshot.progress.confidence,
                         "extracted_by": snapshot.progress.extracted_by,
+                    }
+                if snapshot.state_summary is not None:
+                    event_data["state_summary"] = {
+                        "status": snapshot.state_summary.status,
+                        "summary": snapshot.state_summary.summary,
+                        "indicators": snapshot.state_summary.indicators,
+                        "confidence": snapshot.state_summary.confidence,
+                        "analyzed_by": snapshot.state_summary.analyzed_by,
                     }
                 if snapshot.alerts:
                     event_data["alerts"] = [

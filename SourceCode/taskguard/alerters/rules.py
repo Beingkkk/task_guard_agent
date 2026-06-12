@@ -96,13 +96,13 @@ class MemoryCriticalRule(Rule):
             and snapshot.process.memory_percent is not None
             and snapshot.process.memory_percent > threshold
         ):
-                return Alert(
-                    rule=self.name,
-                    level="CRITICAL",
-                    message=f"Memory usage {snapshot.process.memory_percent:.1f}% exceeds critical threshold {threshold}%",
-                    timestamp=snapshot.timestamp,
-                    snapshot={"memory_percent": snapshot.process.memory_percent},
-                )
+            return Alert(
+                rule=self.name,
+                level="CRITICAL",
+                message=f"Memory usage {snapshot.process.memory_percent:.1f}% exceeds critical threshold {threshold}%",
+                timestamp=snapshot.timestamp,
+                snapshot={"memory_percent": snapshot.process.memory_percent},
+            )
         return None
 
 

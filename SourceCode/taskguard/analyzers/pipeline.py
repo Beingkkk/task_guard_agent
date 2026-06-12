@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from taskguard.analyzers.regex_extractor import RegexExtractor
+from taskguard.analyzers.state_analyzer import StateAnalyzer
 from taskguard.llm.base import BaseProvider, LLMError, ToolDefinition
 from taskguard.models.snapshot import ProgressInfo, Snapshot
 from taskguard.models.task import Task
@@ -54,33 +55,59 @@ class AnalyzerPipeline:
         llm_min_interval: int = 60,
         max_log_lines: int = 50,
         regex_threshold: float = 0.6,
+        state_analyzer: StateAnalyzer | None = None,
     ) -> None:
         self._provider = provider
         self._regex_extractor = regex_extractor
         self._llm_min_interval = llm_min_interval
         self._max_log_lines = max_log_lines
         self._regex_threshold = regex_threshold
+        self._state_analyzer = state_analyzer
 
-    async def analyze(self, task: Task, snapshot: Snapshot) -> ProgressInfo | None:
-        """Extract progress from snapshot log lines."""
+    async def analyze(
+        self,
+        task: Task,
+        snapshot: Snapshot,
+        recent_alerts: list[dict[str, Any]] | None = None,
+    ) -> ProgressInfo | None:
+        """Extract progress from snapshot log lines and optionally analyze task state."""
         log_lines = snapshot.log_lines
-        if not log_lines:
-            return None
+        progress_result: ProgressInfo | None = None
 
-        # 1. Try regex first
-        regex_result = self._regex_extractor.extract(log_lines, task.config.tool_hint)
+        if log_lines:
+            # 1. Try regex first
+            regex_result = self._regex_extractor.extract(log_lines, task.config.tool_hint)
 
-        if regex_result is not None and regex_result.confidence >= self._regex_threshold:
-            return regex_result
+            if regex_result is not None and regex_result.confidence >= self._regex_threshold:
+                progress_result = regex_result
+            else:
+                # 2. Check LLM cooldown
+                now = datetime.now(UTC).timestamp()
+                last_llm = task.state.get("last_llm_call", 0)
+                if now - last_llm < self._llm_min_interval:
+                    # Cooldown active: return low-confidence regex result or None
+                    progress_result = regex_result
+                else:
+                    # 3. LLM fallback
+                    progress_result = await self._llm_progress_extract(task, log_lines)
 
-        # 2. Check LLM cooldown
-        now = datetime.now(UTC).timestamp()
-        last_llm = task.state.get("last_llm_call", 0)
-        if now - last_llm < self._llm_min_interval:
-            # Cooldown active: return low-confidence regex result or None
-            return regex_result
+        # 4. Optional state summary (metrics + logs + alerts)
+        if self._state_analyzer is not None:
+            try:
+                snapshot.state_summary = await self._state_analyzer.analyze(
+                    task, snapshot, recent_alerts=recent_alerts
+                )
+            except Exception:
+                logger.exception("State analysis failed for %s", task.alias)
 
-        # 3. LLM fallback
+        return progress_result
+
+    async def _llm_progress_extract(
+        self,
+        task: Task,
+        log_lines: list[str],
+    ) -> ProgressInfo | None:
+        """Call LLM to extract progress information from log lines."""
         trimmed = log_lines[-self._max_log_lines :]
         user_content = "\n".join(trimmed)
 

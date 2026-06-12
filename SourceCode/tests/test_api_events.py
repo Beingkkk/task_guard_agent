@@ -71,7 +71,8 @@ class TestEventPublisher:
         assert len(received) == 0
 
     async def test_callback_exception_does_not_affect_others(
-        self, publisher: EventPublisher,
+        self,
+        publisher: EventPublisher,
     ) -> None:
         """If one callback raises, others still receive the event."""
         received: list[dict] = []

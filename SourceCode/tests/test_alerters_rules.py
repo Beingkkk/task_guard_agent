@@ -273,9 +273,7 @@ class TestLogStalledRule:
         mock_store = AsyncMock()
         # simulate last log was 600s ago
         last_log_time = (datetime.now(UTC) - timedelta(seconds=600)).isoformat()
-        mock_store.query_logs.return_value = [
-            {"timestamp": last_log_time, "lines": '["old line"]'}
-        ]
+        mock_store.query_logs.return_value = [{"timestamp": last_log_time, "lines": '["old line"]'}]
 
         alert = await rule.evaluate(task, snapshot, mock_store)
         assert alert is not None
@@ -311,9 +309,18 @@ class TestProgressStalledRule:
         mock_store = AsyncMock()
         # Return multiple progress rows with same percentage
         mock_store.query_progress.return_value = [
-            {"timestamp": (datetime.now(UTC) - timedelta(seconds=300)).isoformat(), "percentage": 50.0},
-            {"timestamp": (datetime.now(UTC) - timedelta(seconds=200)).isoformat(), "percentage": 50.0},
-            {"timestamp": (datetime.now(UTC) - timedelta(seconds=100)).isoformat(), "percentage": 50.0},
+            {
+                "timestamp": (datetime.now(UTC) - timedelta(seconds=300)).isoformat(),
+                "percentage": 50.0,
+            },
+            {
+                "timestamp": (datetime.now(UTC) - timedelta(seconds=200)).isoformat(),
+                "percentage": 50.0,
+            },
+            {
+                "timestamp": (datetime.now(UTC) - timedelta(seconds=100)).isoformat(),
+                "percentage": 50.0,
+            },
         ]
 
         alert = await rule.evaluate(task, snapshot, mock_store)
@@ -334,9 +341,18 @@ class TestProgressStalledRule:
         mock_store = AsyncMock()
         # Return progress rows with different percentages
         mock_store.query_progress.return_value = [
-            {"timestamp": (datetime.now(UTC) - timedelta(seconds=300)).isoformat(), "percentage": 40.0},
-            {"timestamp": (datetime.now(UTC) - timedelta(seconds=200)).isoformat(), "percentage": 45.0},
-            {"timestamp": (datetime.now(UTC) - timedelta(seconds=100)).isoformat(), "percentage": 50.0},
+            {
+                "timestamp": (datetime.now(UTC) - timedelta(seconds=300)).isoformat(),
+                "percentage": 40.0,
+            },
+            {
+                "timestamp": (datetime.now(UTC) - timedelta(seconds=200)).isoformat(),
+                "percentage": 45.0,
+            },
+            {
+                "timestamp": (datetime.now(UTC) - timedelta(seconds=100)).isoformat(),
+                "percentage": 50.0,
+            },
         ]
 
         assert await rule.evaluate(task, snapshot, mock_store) is None

@@ -90,7 +90,9 @@ class APIServer:
         logger.info("API server stopped")
 
 
-async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarness, TaskStore, MetricsStore, BaseProvider | None]:
+async def _setup_harness(
+    config_path: Path, data_dir: Path
+) -> tuple[AgentHarness, TaskStore, MetricsStore, BaseProvider | None]:
     """Set up the AgentHarness with all collectors and analyzers."""
     store = TaskStore(data_dir)
     metrics = MetricsStore(data_dir / "metrics.db")
@@ -101,7 +103,8 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
     collect_concurrency = getattr(cfg, "collect_concurrency", 12)
 
     harness = AgentHarness(
-        store, metrics,
+        store,
+        metrics,
         collect_interval=collect_interval,
         collect_concurrency=collect_concurrency,
     )
@@ -127,6 +130,15 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
         )
         from taskguard.analyzers.pipeline import AnalyzerPipeline
         from taskguard.analyzers.regex_extractor import RegexExtractor
+        from taskguard.analyzers.state_analyzer import StateAnalyzer
+
+        state_analyzer: StateAnalyzer | None = None
+        if cfg.llm.state_analysis_enabled:
+            state_analyzer = StateAnalyzer(
+                provider=provider,
+                state_analysis_interval=cfg.llm.state_analysis_interval,
+                max_log_lines=cfg.llm.max_log_lines,
+            )
 
         harness.analyzer = AnalyzerPipeline(
             provider=provider,
@@ -134,6 +146,7 @@ async def _setup_harness(config_path: Path, data_dir: Path) -> tuple[AgentHarnes
             llm_min_interval=cfg.llm.min_interval,
             max_log_lines=cfg.llm.max_log_lines,
             regex_threshold=cfg.llm.regex_threshold,
+            state_analyzer=state_analyzer,
         )
     except Exception:
         logger.warning("LLM analyzer not available; running without progress extraction")

@@ -105,6 +105,28 @@ class QueryStatusTool(BaseTool):
             except Exception:
                 pass
 
+            # Latest state summary
+            try:
+                summary_rows = await self._metrics_store.query_state_summary(alias, since)
+                if summary_rows:
+                    row = summary_rows[-1]
+                    indicators_raw = row.get("indicators", "{}")
+                    indicators = (
+                        json.loads(indicators_raw)
+                        if isinstance(indicators_raw, str)
+                        else indicators_raw
+                    )
+                    result["latest_state_summary"] = {
+                        "status": row.get("status"),
+                        "summary": row.get("summary"),
+                        "indicators": indicators,
+                        "confidence": row.get("confidence"),
+                        "analyzed_by": row.get("analyzed_by"),
+                        "timestamp": row.get("timestamp"),
+                    }
+            except Exception:
+                pass
+
         return ToolResult(ok=True, data=result)
 
 

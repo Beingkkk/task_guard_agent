@@ -6,6 +6,7 @@ Relates-to: FR-2
 from datetime import UTC, datetime, timedelta
 
 from taskguard.models.snapshot import ProcessInfo, Snapshot
+from taskguard.models.state_summary import StateSummary
 from taskguard.storage.metrics_store import MetricsStore
 
 
@@ -112,6 +113,28 @@ class TestMetricsStore:
         assert metrics == []
         await store.close()
 
+    async def test_save_and_query_state_summary(self) -> None:
+        store = MetricsStore(":memory:")
+        await store.open()
+        now = datetime.now(UTC)
+        summary = StateSummary(
+            status="healthy",
+            summary="任务运行正常",
+            indicators={"cpu_percent": 12.5, "memory_percent": 34.0},
+            confidence=0.9,
+        )
+        await store.save_state_summary("dl", now, summary)
+
+        rows = await store.query_state_summary("dl", since=now - timedelta(minutes=1))
+        assert len(rows) == 1
+        assert rows[0]["status"] == "healthy"
+        assert rows[0]["summary"] == "任务运行正常"
+        assert rows[0]["confidence"] == 0.9
+        import json
+
+        assert json.loads(rows[0]["indicators"]) == {"cpu_percent": 12.5, "memory_percent": 34.0}
+        await store.close()
+
     async def test_migrate_old_database_adds_missing_columns(self) -> None:
         """Simulate an old database missing memory_percent/status columns."""
         import tempfile
@@ -211,6 +234,7 @@ class TestMetricsStoreConcurrency:
             lines = []
             for row in logs:
                 import json
+
                 lines.extend(json.loads(row["lines"]))
             assert len(lines) == snapshots_per_task
 

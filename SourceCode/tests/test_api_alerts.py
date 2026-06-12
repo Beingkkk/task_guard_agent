@@ -56,17 +56,19 @@ class TestAlertsApi:
         store = MagicMock()
         store.get = AsyncMock()
         metrics = MagicMock()
-        metrics.query_alerts = AsyncMock(return_value=[
-            {
-                "id": 1,
-                "alias": "dl",
-                "timestamp": datetime.now(UTC).isoformat(),
-                "rule": "cpu_high",
-                "level": "WARNING",
-                "message": "CPU high",
-                "snapshot": None,
-            }
-        ])
+        metrics.query_alerts = AsyncMock(
+            return_value=[
+                {
+                    "id": 1,
+                    "alias": "dl",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "rule": "cpu_high",
+                    "level": "WARNING",
+                    "message": "CPU high",
+                    "snapshot": None,
+                }
+            ]
+        )
         app["store"] = store
         app["metrics_store"] = metrics
         setup_routes(app)

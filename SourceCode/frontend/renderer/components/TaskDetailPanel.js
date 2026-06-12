@@ -22,6 +22,7 @@ class TaskDetailPanel {
     this.messages = []; // { role: 'user' | 'assistant', content: string }
     this._logInfo = null; // cached log-info response
     this._changeLogPath = null; // temporary path for change-log dialog
+    this._isChangingLog = false; // true while the change-log dialog is open
 
     this._bindEvents();
   }
@@ -90,6 +91,21 @@ class TaskDetailPanel {
     }
   }
 
+  async refreshSilently() {
+    if (!this.currentAlias) return;
+    // Don't overwrite the change-log dialog while the user is editing it
+    if (this._isChangingLog) return;
+
+    this.refreshBtn?.classList.add('spinning');
+    try {
+      await this._loadTaskInfo(this.currentAlias);
+    } catch (err) {
+      console.error('[DetailPanel] Silent refresh failed:', err);
+    } finally {
+      this.refreshBtn?.classList.remove('spinning');
+    }
+  }
+
   show(alias) {
     this.currentAlias = alias;
     this.messages = [];
@@ -120,24 +136,58 @@ class TaskDetailPanel {
     return this.panel && !this.panel.classList.contains('hidden');
   }
 
-  async _loadTaskInfo(alias) {
+  async _loadTaskInfo(alias, attempt = 1) {
+    const maxRetries = 2;
     try {
-      // Fetch both status and log-info in parallel
-      const [statusResp, logInfoResp] = await Promise.all([
+      // Fetch status and log-info independently so one failure doesn't mask the other
+      const [statusResult, logInfoResult] = await Promise.allSettled([
         this.apiRequest('GET', `/api/tasks/${encodeURIComponent(alias)}/status`),
         this.apiRequest('GET', `/api/tasks/${encodeURIComponent(alias)}/log-info`),
       ]);
 
-      if (statusResp.status === 200 && statusResp.data) {
-        this._logInfo = logInfoResp.status === 200 ? logInfoResp.data : null;
+      const statusResp = statusResult.status === 'fulfilled' ? statusResult.value : null;
+      const logInfoResp = logInfoResult.status === 'fulfilled' ? logInfoResult.value : null;
+
+      const statusError = statusResult.status === 'rejected' ? statusResult.reason : null;
+      const logInfoError = logInfoResult.status === 'rejected' ? logInfoResult.reason : null;
+
+      if (statusResp?.status === 200 && statusResp.data) {
+        this._logInfo = logInfoResp?.status === 200 ? logInfoResp.data : null;
         this._renderInfo(statusResp.data);
+        return;
       }
+
+      // Status request failed or returned non-200: decide whether to retry
+      const shouldRetry = attempt <= maxRetries && (statusError || statusResp?.status >= 500);
+      if (shouldRetry) {
+        console.warn(`[DetailPanel] Load failed (attempt ${attempt}), retrying...`, statusError || statusResp);
+        await this._delay(500 * attempt);
+        return this._loadTaskInfo(alias, attempt + 1);
+      }
+
+      // Non-retryable or exhausted retries
+      const message = statusError
+        ? `加载失败: ${statusError.message || statusError}`
+        : `加载失败: HTTP ${statusResp?.status || 'unknown'}`;
+      this._renderLoadError(message);
     } catch (err) {
       console.error('[DetailPanel] Failed to load task info:', err);
-      if (this.infoEl) {
-        this.infoEl.innerHTML = '<div style="color: var(--color-danger);">加载任务信息失败</div>';
+      if (attempt <= maxRetries) {
+        await this._delay(500 * attempt);
+        return this._loadTaskInfo(alias, attempt + 1);
       }
+      this._renderLoadError('加载任务信息失败');
     }
+  }
+
+  _delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  _renderLoadError(message) {
+    if (!this.infoEl) return;
+    this.infoEl.innerHTML = `<div style="color: var(--color-danger); padding: 12px 0;">${this._escapeHtml(message)}</div>
+      <div style="color: var(--text-muted); font-size: 0.8125rem;">点击右上角刷新按钮重试</div>`;
   }
 
   _renderInfo(data) {
@@ -150,6 +200,7 @@ class TaskDetailPanel {
     const memWset = data.latest_metrics?.memory_working_set;
     const logSource = data.log_source || data.registered?.log_source || '-';
     const progress = data.latest_progress;
+    const stateSummary = data.latest_state_summary;
 
     const statusColor = status === 'running' ? 'var(--color-success)' :
       status === 'exited' ? 'var(--color-danger)' :
@@ -161,14 +212,24 @@ class TaskDetailPanel {
     html += this._infoRow('进程 PID', pid);
     html += this._infoRow('状态', `<span style="color:${statusColor}">${status}</span>`);
 
-    if (cpu !== undefined) {
+    if (typeof cpu === 'number') {
       html += this._infoRow('CPU', `${cpu.toFixed(1)}%`);
     }
-    if (mem !== undefined) {
+    if (typeof mem === 'number') {
       html += this._infoRow('内存占用', `${mem.toFixed(1)}%`);
     }
     if (memWset !== undefined) {
       html += this._infoRow('工作集内存', this._formatBytes(memWset));
+    }
+
+    // AI state summary
+    if (stateSummary && (stateSummary.summary || stateSummary.status)) {
+      html += this._renderStateSummarySection(stateSummary);
+    }
+
+    // Progress / LLM description
+    if (progress && (progress.raw_summary || progress.percentage != null)) {
+      html += this._renderProgressSection(progress);
     }
 
     // Recent logs preview
@@ -178,6 +239,67 @@ class TaskDetailPanel {
     html += this._renderLogSection(logSource);
 
     this.infoEl.innerHTML = html;
+  }
+
+  _renderProgressSection(progress) {
+    const summary = progress.raw_summary || '';
+    const pct = progress.percentage;
+    const hasPct = typeof pct === 'number' && pct > 0 && Number.isFinite(pct);
+    const hasSpeed = progress.speed && progress.speed !== '0 B/s';
+    const hasEta = progress.eta && progress.eta !== '';
+    const hasStatus = progress.status && progress.status !== 'unknown' && progress.status !== 'normal';
+
+    const badges = [];
+    if (hasPct) badges.push(`${pct.toFixed(1)}%`);
+    if (hasSpeed) badges.push(`速度 ${progress.speed}`);
+    if (hasEta) badges.push(`预计 ${progress.eta}`);
+    if (hasStatus) badges.push(`状态 ${progress.status}`);
+
+    let html = '<div class="detail-progress-section">';
+    html += '<div class="detail-section-header">任务进度</div>';
+
+    if (badges.length > 0) {
+      html += `<div class="detail-progress-badges">${badges
+        .map((b) => `<span class="detail-progress-badge">${this._escapeHtml(b)}</span>`)
+        .join('')}</div>`;
+    }
+
+    if (summary) {
+      html += `<div class="detail-progress-summary">
+        <div class="detail-progress-summary-label">AI 分析</div>
+        <div class="detail-progress-summary-text">${this._escapeHtml(summary)}</div>
+      </div>`;
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  _renderStateSummarySection(stateSummary) {
+    const status = stateSummary.status || 'unknown';
+    const summary = stateSummary.summary || '';
+    const confidence = stateSummary.confidence;
+
+    const statusColor = status === 'healthy' ? 'var(--color-success)' :
+      status === 'stalled' ? 'var(--color-warning)' :
+      status === 'error' ? 'var(--color-danger)' : 'var(--text-secondary)';
+
+    let html = '<div class="detail-state-section" data-status="' + status + '">';
+    html += '<div class="detail-section-header">AI 状态总结</div>';
+
+    html += '<div class="detail-state-badge-row">';
+    html += `<span class="detail-state-badge" style="background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor}44">${this._escapeHtml(status)}</span>`;
+    if (typeof confidence === 'number' && Number.isFinite(confidence)) {
+      html += `<span class="detail-state-confidence">置信度 ${(confidence * 100).toFixed(0)}%</span>`;
+    }
+    html += '</div>';
+
+    if (summary) {
+      html += `<div class="detail-state-summary">${this._escapeHtml(summary)}</div>`;
+    }
+
+    html += '</div>';
+    return html;
   }
 
   _renderRecentLogs(recentLogs) {
@@ -191,12 +313,15 @@ class TaskDetailPanel {
       }
     }
 
-    const count = Array.isArray(recentLogs) ? lines.length : (recentLogs?.entry_count || lines.length);
+    // entry_count = number of collection records; lines.length = actual log lines
+    const entryCount = !Array.isArray(recentLogs) && recentLogs?.entry_count != null
+      ? recentLogs.entry_count
+      : lines.length;
 
     let html = '<div class="detail-logs-preview">';
     html += '<div class="detail-logs-header">最近日志';
-    if (count > 0) {
-      html += ` <span class="detail-logs-count">(${count} 条)</span>`;
+    if (lines.length > 0 || entryCount > 0) {
+      html += ` <span class="detail-logs-count">(${lines.length} 条 · ${entryCount} 次采集)</span>`;
     }
     html += '</div>';
 
@@ -297,6 +422,7 @@ class TaskDetailPanel {
   _showChangeLogInput() {
     const box = this.infoEl?.querySelector('#change-log-box');
     if (box) box.classList.remove('hidden');
+    this._isChangingLog = true;
     this._changeLogPath = null;
     this._updateChangeLogDisplay(null);
   }
@@ -304,6 +430,7 @@ class TaskDetailPanel {
   _hideChangeLogInput() {
     const box = this.infoEl?.querySelector('#change-log-box');
     if (box) box.classList.add('hidden');
+    this._isChangingLog = false;
     this._changeLogPath = null;
   }
 
@@ -423,7 +550,7 @@ class TaskDetailPanel {
     this.inputEl.value = '';
 
     // Show loading
-    const loadingId = this._addMessage('loading', '思考中...');
+    const loadingId = await this._addMessage('loading', '思考中...');
 
     try {
       const resp = await this.apiRequest('POST', `/api/tasks/${encodeURIComponent(this.currentAlias)}/ask`, {
@@ -432,6 +559,8 @@ class TaskDetailPanel {
 
       // Remove loading
       this._removeMessage(loadingId);
+
+      console.log('[DetailPanel] Ask response:', resp.status, resp.data);
 
       if (resp.status === 200 && resp.data?.answer) {
         this._addMessage('assistant', resp.data.answer);
@@ -446,7 +575,7 @@ class TaskDetailPanel {
     }
   }
 
-  _addMessage(role, content) {
+  async _addMessage(role, content) {
     if (!this.historyEl) return '';
 
     // Hide empty-state hint on first message
@@ -457,7 +586,14 @@ class TaskDetailPanel {
     const el = document.createElement('div');
     el.id = id;
     el.className = `ask-message ${role}`;
-    el.textContent = content;
+    if (role === 'assistant') {
+      const body = document.createElement('div');
+      body.className = 'markdown-body';
+      body.innerHTML = await this._markdownToHtml(content);
+      el.appendChild(body);
+    } else {
+      el.textContent = content;
+    }
     this.historyEl.appendChild(el);
     this.historyEl.scrollTop = this.historyEl.scrollHeight;
     return id;
@@ -480,5 +616,26 @@ class TaskDetailPanel {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  async _markdownToHtml(text) {
+    if (!text) return '';
+    // Prefer the secure renderer exposed by the preload script.
+    if (typeof window.electronAPI?.renderMarkdown === 'function') {
+      try {
+        const rendered = await window.electronAPI.renderMarkdown(text);
+        console.log('[DetailPanel] renderMarkdown:', { inputLength: text.length, outputLength: rendered?.length });
+        if (rendered && rendered.trim()) {
+          return rendered;
+        }
+      } catch (err) {
+        console.warn('[DetailPanel] renderMarkdown failed:', err);
+      }
+      // If marked is not ready yet or stripped everything, fall back to plain text.
+    } else {
+      console.warn('[DetailPanel] renderMarkdown not available');
+    }
+    // Fallback: plain text with line breaks preserved.
+    return this._escapeHtml(text).replace(/\n/g, '<br>');
   }
 }

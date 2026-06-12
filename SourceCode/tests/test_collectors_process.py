@@ -48,7 +48,42 @@ class TestProcessCollector:
             info = await collector.collect(12345)
 
         assert info is not None
-        assert info.status is None
+        # Access denied means the process exists; report running without metrics
+        assert info.status == "running"
+
+    async def test_no_such_process_but_pid_exists(self) -> None:
+        """If psutil raises NoSuchProcess but pid_exists says the PID is alive,
+        do not misreport it as exited (e.g., protected/elevated process).
+        """
+        with (
+            patch(
+                "taskguard.collectors.process_collector.psutil.Process",
+                side_effect=psutil.NoSuchProcess(12345),
+            ),
+            patch(
+                "taskguard.collectors.process_collector.psutil.pid_exists",
+                return_value=True,
+            ),
+        ):
+            collector = ProcessCollector()
+            info = await collector.collect(12345)
+
+        assert info is not None
+        assert info.status == "running"
+        assert info.exit_code is None
+
+    async def test_sleeping_status_mapped_to_running(self) -> None:
+        mock_proc = MagicMock()
+        mock_proc.cpu_percent.return_value = 0.0
+        mock_proc.memory_info.return_value = MagicMock(rss=1048576)
+        mock_proc.status.return_value = psutil.STATUS_SLEEPING
+
+        with patch("taskguard.collectors.process_collector.psutil.Process", return_value=mock_proc):
+            collector = ProcessCollector()
+            info = await collector.collect(12345)
+
+        assert info is not None
+        assert info.status == "running"
 
     async def test_pid_none(self) -> None:
         collector = ProcessCollector()
@@ -82,12 +117,15 @@ class TestProcessCollector:
         if sys.platform != "win32":
             pytest.skip("Windows-only test")
 
-        with patch(
-            "taskguard.collectors.process_collector.psutil.Process",
-            side_effect=psutil.NoSuchProcess(12345),
-        ), patch(
-            "taskguard.collectors.process_collector._get_exit_code_windows",
-            return_value=42,
+        with (
+            patch(
+                "taskguard.collectors.process_collector.psutil.Process",
+                side_effect=psutil.NoSuchProcess(12345),
+            ),
+            patch(
+                "taskguard.collectors.process_collector._get_exit_code_windows",
+                return_value=42,
+            ),
         ):
             collector = ProcessCollector()
             info = await collector.collect(12345)

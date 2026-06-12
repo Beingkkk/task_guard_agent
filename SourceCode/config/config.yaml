@@ -9,6 +9,8 @@ llm:
   min_interval: 60
   max_log_lines: 50
   regex_threshold: 0.6
+  state_analysis_enabled: true
+  state_analysis_interval: 60
 
 alerts:
   default_cooldown: 300

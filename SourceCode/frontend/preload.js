@@ -7,8 +7,38 @@
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
+const marked = require('marked');
+
+// Secure markdown renderer for LLM replies in the renderer process.
+// Raw HTML is stripped, and only http/https/mailto links are emitted.
+const escapeHtml = (text) =>
+  String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+const markdownRenderer = new marked.Renderer();
+markdownRenderer.html = () => '';
+markdownRenderer.link = (href, title, text) => {
+  if (!/^(https?|mailto):/i.test(href)) {
+    return text;
+  }
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+};
+
+marked.use({
+  renderer: markdownRenderer,
+  gfm: true,
+  breaks: true,
+  headerIds: false,
+  mangle: false,
+});
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // ── Markdown rendering ──────────────────────────────────────────────────────
+  renderMarkdown: (markdown) => marked.parse(markdown || ''),
+
   // ── HTTP API ──────────────────────────────────────────────────────────────
 
   /**

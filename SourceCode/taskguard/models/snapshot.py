@@ -8,8 +8,9 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from taskguard.models.alert import Alert
+from taskguard.models.state_summary import StateSummary
 
-__all__ = ["Alert", "ProcessInfo", "ProgressInfo", "Snapshot"]
+__all__ = ["Alert", "ProcessInfo", "ProgressInfo", "Snapshot", "StateSummary"]
 
 
 @dataclass(slots=True)
@@ -45,4 +46,5 @@ class Snapshot:
     process: ProcessInfo | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     progress: ProgressInfo | None = None
+    state_summary: StateSummary | None = None
     alerts: list[Alert] = field(default_factory=list)

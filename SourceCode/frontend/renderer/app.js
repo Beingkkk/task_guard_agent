@@ -40,29 +40,117 @@
 
   window.showToast = showToast;
 
+  // ── Confirm Dialog ─────────────────────────────────────────────────────────
+
+  function showConfirm(message) {
+    return new Promise((resolve) => {
+      const dialog = document.getElementById('confirm-dialog');
+      const messageEl = document.getElementById('confirm-message');
+      const okBtn = document.getElementById('btn-confirm-ok');
+      const cancelBtn = document.getElementById('btn-confirm-cancel');
+      const overlay = dialog?.querySelector('.modal-overlay');
+
+      if (!dialog || !messageEl || !okBtn || !cancelBtn) {
+        resolve(false);
+        return;
+      }
+
+      // Prevent re-entry while a confirm is already open
+      if (!dialog.classList.contains('hidden')) {
+        resolve(false);
+        return;
+      }
+
+      messageEl.textContent = message;
+      dialog.classList.remove('hidden');
+
+      let resolved = false;
+
+      const cleanup = () => {
+        if (resolved) return;
+        resolved = true;
+        dialog.classList.add('hidden');
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        overlay?.removeEventListener('click', onCancel);
+        document.removeEventListener('keydown', onKeyDown);
+      };
+
+      const onOk = () => {
+        cleanup();
+        resolve(true);
+      };
+
+      const onCancel = () => {
+        cleanup();
+        resolve(false);
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+          return;
+        }
+        if (e.key === 'Tab') {
+          const focusable = [cancelBtn, okBtn];
+          const current = document.activeElement;
+          const idx = focusable.indexOf(current);
+          if (idx === -1) {
+            e.preventDefault();
+            focusable[0].focus();
+            return;
+          }
+          const nextIdx = e.shiftKey
+            ? (idx - 1 + focusable.length) % focusable.length
+            : (idx + 1) % focusable.length;
+          e.preventDefault();
+          focusable[nextIdx].focus();
+        }
+      };
+
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      overlay?.addEventListener('click', onCancel);
+      document.addEventListener('keydown', onKeyDown);
+
+      // Focus the OK button by default; Tab cycles between buttons, Escape cancels
+      requestAnimationFrame(() => {
+        if (!resolved) okBtn.focus();
+      });
+    });
+  }
+
+  window.showConfirm = showConfirm;
+
   // ── Status Bar ─────────────────────────────────────────────────────────────
 
-  let lastUpdateTime = null;
   let refreshIntervalSec = 60;
   let refreshTimer = null;
 
-  function updateLastUpdateTime() {
-    lastUpdateTime = new Date();
-    const el = document.getElementById('last-update-time');
-    if (el) {
-      el.textContent = lastUpdateTime.toLocaleTimeString('zh-CN');
-    }
-  }
-
   function initStatusBar() {
-    const slider = document.getElementById('refresh-interval');
-    const display = document.getElementById('refresh-interval-display');
+    const input = document.getElementById('refresh-interval');
+    const applyBtn = document.getElementById('btn-apply-refresh');
 
-    if (slider && display) {
-      slider.addEventListener('input', () => {
-        refreshIntervalSec = parseInt(slider.value, 10);
-        display.textContent = `${refreshIntervalSec}s`;
+    if (input && applyBtn) {
+      applyBtn.addEventListener('click', () => {
+        let value = parseInt(input.value, 10);
+        if (Number.isNaN(value) || value < 60) {
+          value = 60;
+          input.value = 60;
+          showToast('刷新周期不能小于 60 秒，已设为 60 秒', 'warning', 2000);
+        }
+        refreshIntervalSec = value;
         restartRefreshTimer();
+        showToast(`刷新周期已设为 ${value} 秒`, 'success', 1500);
+      });
+
+      // Allow Enter key to apply
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          applyBtn.click();
+        }
       });
     }
   }
@@ -71,7 +159,6 @@
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(() => {
       loadTasks();
-      updateLastUpdateTime();
     }, refreshIntervalSec * 1000);
   }
 
@@ -346,8 +433,6 @@
             taskGrid?.removeTask(alias);
           }
         }
-
-        updateLastUpdateTime();
       } else {
         state.tasks = [];
         taskGrid?.renderTasks([]);
@@ -367,10 +452,12 @@
 
   async function deleteTask(alias) {
     if (_deleting.has(alias)) return;
-    if (!confirm(`确定要注销任务 "${alias}" 吗？`)) return;
-
     _deleting.add(alias);
+
     try {
+      const confirmed = await showConfirm(`确定要注销任务 "${alias}" 吗？`);
+      if (!confirmed) return;
+
       const resp = await apiRequest('DELETE', `/api/tasks/${encodeURIComponent(alias)}`);
       if (resp.status === 204) {
         showToast(`任务 "${alias}" 已注销`, 'success');
@@ -380,13 +467,20 @@
           detailPanel.hide();
         }
       } else {
-        showToast('注销失败', 'error');
+        const message = resp.data?.message || `HTTP ${resp.status}`;
+        showToast(`注销失败: ${message}`, 'error');
       }
     } catch (err) {
       console.error('[App] Delete failed:', err);
       showToast('注销失败: ' + err.message, 'error');
     } finally {
       _deleting.delete(alias);
+    }
+  }
+
+  function handleTaskUpdated(alias, data, isUpdate) {
+    if (isUpdate && detailPanel?.currentAlias === alias && detailPanel?.isVisible()) {
+      detailPanel.refreshSilently();
     }
   }
 
@@ -411,8 +505,10 @@
       if (data?.alias) {
         taskGrid?.addOrUpdateTask({
           alias: data.alias,
+          timestamp: data.timestamp,
           latest_metrics: data.metrics,
           latest_progress: data.progress,
+          latest_state_summary: data.state_summary,
           recent_logs: data.log_lines,
         });
       }
@@ -493,6 +589,7 @@
     taskGrid = new TaskGrid('task-grid', {
       onClick: handleTaskClick,
       onDelete: deleteTask,
+      onTaskUpdated: handleTaskUpdated,
     });
 
     detailPanel = new TaskDetailPanel({
@@ -515,7 +612,6 @@
     // Initial load
     loadProcesses();
     loadTasks();
-    updateLastUpdateTime();
 
     // Start refresh timer
     startRefreshTimer();

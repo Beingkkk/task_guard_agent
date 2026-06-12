@@ -255,6 +255,7 @@ ipcMain.handle('api:request', async (_event, { method, path, body }) => {
       headers: {
         'Content-Type': 'application/json',
       },
+      timeout: 10000, // 10s timeout for backend API requests
     };
 
     const req = http.request(options, (res) => {
@@ -271,6 +272,10 @@ ipcMain.handle('api:request', async (_event, { method, path, body }) => {
     });
 
     req.on('error', (err) => reject(err));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
 
     if (body) {
       req.write(JSON.stringify(body));
@@ -294,6 +299,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
     },
   });
 

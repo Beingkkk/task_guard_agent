@@ -58,7 +58,9 @@ class TestQueryBatchStatusTool:
     async def test_happy(self, tmp_path) -> None:
         store = TaskStore(tmp_path)
         await store.add(Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log")))
-        await store.add(Task(alias="b", log_source=LogSource(type="file", path="C:\\x.log"), pid=123))
+        await store.add(
+            Task(alias="b", log_source=LogSource(type="file", path="C:\\x.log"), pid=123)
+        )
         tool = QueryBatchStatusTool(store)
         result = await tool.execute({"aliases": ["a", "b"]})
         assert result.ok is True

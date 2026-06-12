@@ -33,7 +33,8 @@ from taskguard.storage.task_store import TaskStore
 
 
 def register_builtin_tools(
-    store: TaskStore, metrics_store: MetricsStore | None = None,
+    store: TaskStore,
+    metrics_store: MetricsStore | None = None,
 ) -> None:
     """Register all built-in tools."""
     ToolRegistry.clear()

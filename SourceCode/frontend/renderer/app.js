@@ -507,7 +507,6 @@
           alias: data.alias,
           timestamp: data.timestamp,
           latest_metrics: data.metrics,
-          latest_progress: data.progress,
           latest_state_summary: data.state_summary,
           recent_logs: data.log_lines,
         });

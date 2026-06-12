@@ -28,9 +28,6 @@ class TaskCard {
     if (normalized.metrics && !normalized.latest_metrics) {
       normalized.latest_metrics = normalized.metrics;
     }
-    if (normalized.progress && !normalized.latest_progress) {
-      normalized.latest_progress = normalized.progress;
-    }
     if (normalized.log_lines && !normalized.recent_logs) {
       normalized.recent_logs = normalized.log_lines;
     }
@@ -90,7 +87,6 @@ class TaskCard {
           <div class="metric-value" data-key="memPct"></div>
         </div>
       </div>
-      <div class="progress-area"></div>
       <div class="log-area"></div>
     `;
 
@@ -103,7 +99,6 @@ class TaskCard {
     this._els.mem = el.querySelector('[data-key="mem"]');
     this._els.status = el.querySelector('[data-key="status"]');
     this._els.memPct = el.querySelector('[data-key="memPct"]');
-    this._els.progress = el.querySelector('.progress-area');
     this._els.logs = el.querySelector('.log-area');
 
     // Static content that never changes
@@ -141,11 +136,10 @@ class TaskCard {
   _syncUI() {
     const data = this.task;
     const metrics = data.latest_metrics || data.metrics || {};
-    const progress = data.latest_progress || data.progress || null;
     const logs = this._getLogsArray(data);
 
     // Status class (border color)
-    const statusClass = this._statusClass(metrics, progress, data);
+    const statusClass = this._statusClass(metrics, data);
     this.element.className = `task-card ${statusClass}`;
 
     // Last update time
@@ -173,9 +167,6 @@ class TaskCard {
     // Memory %
     this._setMetric(this._els.memPct, showLoading, metrics.memory_percent, (v) => `${v.toFixed(1)}%`);
 
-    // Progress
-    this._els.progress.innerHTML = this._renderProgress(progress);
-
     // Logs
     this._els.logs.innerHTML = showLoading ? this._renderLoadingLogs() : this._renderLogs(logs);
   }
@@ -191,7 +182,7 @@ class TaskCard {
   }
 
   _getLastUpdateTimestamp(data) {
-    const raw = data.timestamp || data.latest_metrics?.timestamp || data.latest_progress?.timestamp;
+    const raw = data.timestamp || data.latest_metrics?.timestamp;
     if (!raw) return null;
     const d = new Date(raw);
     return Number.isNaN(d.getTime()) ? null : d;
@@ -203,12 +194,12 @@ class TaskCard {
     return this.task.alias || this.task.registered?.alias || 'Unknown';
   }
 
-  _statusClass(metrics, progress, data) {
+  _statusClass(metrics, data) {
     if (metrics?.status === 'exited' || metrics?.status === 'oom') return 'status-critical';
-    if ((metrics?.cpu_percent ?? 0) > 90 || (metrics?.memory_percent ?? 0) > 90 || progress?.status === 'error') {
+    if ((metrics?.cpu_percent ?? 0) > 90 || (metrics?.memory_percent ?? 0) > 90) {
       return 'status-danger';
     }
-    if (data?.state?.file?.stalled || (metrics?.cpu_percent ?? 0) > 70 || (metrics?.memory_percent ?? 0) > 70 || progress?.status === 'stalled') {
+    if (data?.state?.file?.stalled || (metrics?.cpu_percent ?? 0) > 70 || (metrics?.memory_percent ?? 0) > 70) {
       return 'status-warning';
     }
     return '';
@@ -218,27 +209,6 @@ class TaskCard {
     const logs = data.recent_logs || data.log_lines || [];
     if (logs && typeof logs === 'object' && !Array.isArray(logs)) return logs.lines || [];
     return Array.isArray(logs) ? logs : [];
-  }
-
-  _renderProgress(progress) {
-    if (!progress) return '';
-    const hasPct = progress.percentage != null && progress.percentage > 0;
-    const hasSpeed = progress.speed && progress.speed !== '0 B/s';
-    const hasEta = progress.eta && progress.eta !== '';
-    const hasStatus = progress.status && progress.status !== 'unknown' && progress.status !== 'normal';
-    const summary = progress.raw_summary || '';
-    if (!hasPct && !hasSpeed && !hasEta && !hasStatus && !summary) return '';
-
-    const parts = [];
-    if (hasPct) parts.push(`${progress.percentage.toFixed(1)}%`);
-    if (hasSpeed) parts.push(`速度 ${progress.speed}`);
-    if (hasEta) parts.push(`预计 ${progress.eta}`);
-    if (hasStatus) parts.push(`状态 ${progress.status}`);
-
-    return `
-      ${parts.length > 0 ? `<div class="progress-summary"><span class="progress-badge">${this._esc(parts.join(' | '))}</span></div>` : ''}
-      ${summary ? `<div class="progress-description">${this._esc(summary)}</div>` : ''}
-    `;
   }
 
   _renderLoadingLogs() {

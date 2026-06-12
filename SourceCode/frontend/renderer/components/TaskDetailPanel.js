@@ -199,7 +199,6 @@ class TaskDetailPanel {
     const mem = data.latest_metrics?.memory_percent;
     const memWset = data.latest_metrics?.memory_working_set;
     const logSource = data.log_source || data.registered?.log_source || '-';
-    const progress = data.latest_progress;
     const stateSummary = data.latest_state_summary;
 
     const statusColor = status === 'running' ? 'var(--color-success)' :
@@ -227,11 +226,6 @@ class TaskDetailPanel {
       html += this._renderStateSummarySection(stateSummary);
     }
 
-    // Progress / LLM description
-    if (progress && (progress.raw_summary || progress.percentage != null)) {
-      html += this._renderProgressSection(progress);
-    }
-
     // Recent logs preview
     html += this._renderRecentLogs(data.recent_logs);
 
@@ -239,40 +233,6 @@ class TaskDetailPanel {
     html += this._renderLogSection(logSource);
 
     this.infoEl.innerHTML = html;
-  }
-
-  _renderProgressSection(progress) {
-    const summary = progress.raw_summary || '';
-    const pct = progress.percentage;
-    const hasPct = typeof pct === 'number' && pct > 0 && Number.isFinite(pct);
-    const hasSpeed = progress.speed && progress.speed !== '0 B/s';
-    const hasEta = progress.eta && progress.eta !== '';
-    const hasStatus = progress.status && progress.status !== 'unknown' && progress.status !== 'normal';
-
-    const badges = [];
-    if (hasPct) badges.push(`${pct.toFixed(1)}%`);
-    if (hasSpeed) badges.push(`速度 ${progress.speed}`);
-    if (hasEta) badges.push(`预计 ${progress.eta}`);
-    if (hasStatus) badges.push(`状态 ${progress.status}`);
-
-    let html = '<div class="detail-progress-section">';
-    html += '<div class="detail-section-header">任务进度</div>';
-
-    if (badges.length > 0) {
-      html += `<div class="detail-progress-badges">${badges
-        .map((b) => `<span class="detail-progress-badge">${this._escapeHtml(b)}</span>`)
-        .join('')}</div>`;
-    }
-
-    if (summary) {
-      html += `<div class="detail-progress-summary">
-        <div class="detail-progress-summary-label">AI 分析</div>
-        <div class="detail-progress-summary-text">${this._escapeHtml(summary)}</div>
-      </div>`;
-    }
-
-    html += '</div>';
-    return html;
   }
 
   _renderStateSummarySection(stateSummary) {

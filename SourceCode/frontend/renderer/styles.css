@@ -743,50 +743,6 @@ body.maximized .titlebar {
   50% { opacity: 0.75; }
 }
 
-/* ── Progress Summary ──────────────────────────────────────────────────────── */
-.progress-summary {
-  margin-bottom: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.progress-badge {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid var(--border-accent);
-  border-radius: 4px;
-  padding: 3px 10px;
-  font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', monospace;
-  white-space: nowrap;
-}
-
-.progress-text {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.progress-description {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  line-height: 1.55;
-  margin-bottom: 10px;
-  padding: 8px 12px;
-  background: rgba(242, 239, 233, 0.03);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  word-break: break-word;
-  text-wrap: pretty;
-}
-
 /* ── Log Preview ───────────────────────────────────────────────────────────── */
 .log-preview {
   background: rgba(0, 0, 0, 0.18);
@@ -912,13 +868,7 @@ body.maximized .titlebar {
   text-align: right;
 }
 
-/* ── Detail Panel Progress Section ─────────────────────────────────────────── */
-.detail-progress-section {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-color);
-}
-
+/* ── Detail Section Header ─────────────────────────────────────────────────── */
 .detail-section-header {
   font-size: 0.6875rem;
   color: var(--text-muted);
@@ -926,49 +876,6 @@ body.maximized .titlebar {
   letter-spacing: 0.6px;
   margin-bottom: 8px;
   font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', monospace;
-}
-
-.detail-progress-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.detail-progress-badge {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid var(--border-accent);
-  border-radius: 4px;
-  padding: 3px 10px;
-  font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', monospace;
-  white-space: nowrap;
-}
-
-.detail-progress-summary {
-  background: rgba(242, 239, 233, 0.03);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  padding: 10px 14px;
-}
-
-.detail-progress-summary-label {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 6px;
-  font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', monospace;
-}
-
-.detail-progress-summary-text {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  word-break: break-word;
-  text-wrap: pretty;
 }
 
 /* ── Detail Panel State Summary Section ────────────────────────────────────── */

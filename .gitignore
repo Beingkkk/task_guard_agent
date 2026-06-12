@@ -229,3 +229,6 @@ SourceCode/.codegraph/
 
 # Node.js dependencies
 SourceCode/frontend/node_modules/
+
+# Product intro video output (generated)
+Introduce/

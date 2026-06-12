@@ -1834,3 +1834,99 @@ body.maximized .titlebar {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Metrics Trend Chart (proposal-0011) ──────────────────────────────────── */
+.detail-trend-section {
+  margin: 14px 0;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+}
+
+.detail-trend-section .detail-section-header {
+  margin-bottom: 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.detail-trend-empty {
+  padding: 18px 0;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.detail-trend-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.trend-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.trend-legend-item.cpu .trend-dot {
+  background: #38bdf8;
+}
+
+.trend-legend-item.memory .trend-dot {
+  background: #a78bfa;
+}
+
+.trend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.detail-trend-chart-wrapper {
+  position: relative;
+  width: 100%;
+  height: 120px;
+}
+
+.trend-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.trend-tooltip {
+  position: absolute;
+  pointer-events: none;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color-hover);
+  border-radius: var(--border-radius-xs);
+  box-shadow: var(--shadow-modal);
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  white-space: nowrap;
+  z-index: var(--z-panel);
+}
+
+.trend-tooltip.hidden {
+  display: none;
+}
+
+.trend-tooltip-time {
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+}
+
+.detail-trend-window {
+  margin-top: 6px;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-align: right;
+}

@@ -41,10 +41,13 @@ class ListTasksTool(BaseTool):
 
 
 class QueryStatusTool(BaseTool):
-    """Query unified status of a task (metadata + latest metrics + progress + recent logs)."""
+    """Query unified status of a task (metadata + latest metrics + progress + recent logs + trend)."""
 
     name = "query_status"
-    description = "Query task status including metadata, latest metrics, progress, and recent logs"
+    description = "Query task status including metadata, latest metrics, progress, recent logs, and metrics trend"
+
+    _TREND_WINDOW_HOURS = 24
+    _TREND_INTERVAL_MINUTES = 30
 
     def __init__(
         self,
@@ -53,6 +56,90 @@ class QueryStatusTool(BaseTool):
     ) -> None:
         self._store = store
         self._metrics_store = metrics_store
+
+    @staticmethod
+    def _parse_timestamp(value: Any) -> datetime | None:
+        """Parse an ISO timestamp string into a timezone-aware datetime."""
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=UTC)
+        if not isinstance(value, str):
+            return None
+        try:
+            ts = value.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(ts)
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _floor_to_interval(dt: datetime, interval_minutes: int) -> datetime:
+        """Floor a datetime to the start of its interval bucket."""
+        total_minutes = dt.hour * 60 + dt.minute
+        bucket_minutes = (total_minutes // interval_minutes) * interval_minutes
+        return dt.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=bucket_minutes)
+
+    @staticmethod
+    def _stats(values: list[float]) -> dict[str, Any]:
+        """Return avg/max/min/sample_count for a list of numeric values."""
+        if not values:
+            return {"avg": None, "max": None, "min": None, "samples": 0}
+        return {
+            "avg": round(sum(values) / len(values), 2),
+            "max": round(max(values), 2),
+            "min": round(min(values), 2),
+            "samples": len(values),
+        }
+
+    def _build_metrics_trend(
+        self,
+        metrics_rows: list[dict[str, Any]],
+        interval_minutes: int | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate metrics rows into time buckets for trend visualization."""
+        interval = interval_minutes if interval_minutes is not None else self._TREND_INTERVAL_MINUTES
+        if not metrics_rows or interval <= 0:
+            return {
+                "window_hours": self._TREND_WINDOW_HOURS,
+                "interval_minutes": interval,
+                "points": [],
+            }
+
+        buckets: dict[datetime, list[dict[str, Any]]] = {}
+        for row in metrics_rows:
+            ts = self._parse_timestamp(row.get("timestamp"))
+            if ts is None:
+                continue
+            bucket = self._floor_to_interval(ts, interval)
+            buckets.setdefault(bucket, []).append(row)
+
+        points: list[dict[str, Any]] = []
+        for bucket in sorted(buckets):
+            rows = buckets[bucket]
+            cpu_values = [
+                float(r["cpu_percent"])
+                for r in rows
+                if r.get("cpu_percent") is not None and isinstance(r["cpu_percent"], (int, float))
+            ]
+            mem_values = [
+                float(r["memory_percent"])
+                for r in rows
+                if r.get("memory_percent") is not None and isinstance(r["memory_percent"], (int, float))
+            ]
+            if not cpu_values and not mem_values:
+                continue
+            points.append(
+                {
+                    "bucket": bucket.isoformat().replace("+00:00", "Z"),
+                    "cpu_percent": self._stats(cpu_values),
+                    "memory_percent": self._stats(mem_values),
+                }
+            )
+
+        return {
+            "window_hours": self._TREND_WINDOW_HOURS,
+            "interval_minutes": interval,
+            "points": points,
+        }
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         if self._store is None:
@@ -78,6 +165,9 @@ class QueryStatusTool(BaseTool):
                 metrics_rows = await self._metrics_store.query_metrics(alias, since)
                 if metrics_rows:
                     result["latest_metrics"] = metrics_rows[-1]
+                    result["metrics_trend"] = self._build_metrics_trend(metrics_rows)
+                else:
+                    result["metrics_trend"] = self._build_metrics_trend([])
             except Exception:
                 pass
 

@@ -1,15 +1,18 @@
 """Tests for REST API routes.
 
-Relates-to: FR-4
+Relates-to: FR-4, proposal-0011
 """
 
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from aiohttp.web import Application
 
 from taskguard.api.routes import setup_routes
+from taskguard.models.snapshot import ProcessInfo, Snapshot
+from taskguard.storage.metrics_store import MetricsStore
 from taskguard.storage.task_store import TaskStore
 from taskguard.tools import register_builtin_tools
 from taskguard.tools.base import ToolRegistry
@@ -23,12 +26,18 @@ async def api_app(tmp_path: Path) -> Application:
     # Set up task store with test data
     store = TaskStore(tmp_path)
     await store.load()
-    register_builtin_tools(store)
+
+    # Set up metrics store so trend/context queries work in tests
+    metrics_store = MetricsStore(tmp_path / "metrics.db")
+    await metrics_store.open()
+    app["metrics_store"] = metrics_store
+
+    register_builtin_tools(store, metrics_store)
 
     app["store"] = store
 
     # Set up a mock intent parser for natural language tests
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import MagicMock
 
     from taskguard.interaction.intent_parser import IntentParser
     from taskguard.tools.collect_all import CollectAllTool
@@ -43,7 +52,9 @@ async def api_app(tmp_path: Path) -> Application:
 
     setup_routes(app)
 
-    return app
+    yield app
+
+    await metrics_store.close()
 
 
 @pytest.fixture
@@ -121,6 +132,7 @@ class TestTasksRoutes:
         assert data["alias"] == "status-test"
         assert "pid" in data
         assert "log_source" in data
+        assert "metrics_trend" in data
 
     async def test_get_status_nonexistent(self, client: TestClient) -> None:
         """GET /api/tasks/{alias}/status for unknown alias returns 404."""
@@ -215,3 +227,61 @@ class TestNaturalRoute:
         data = await resp.json()
         assert data["executed"] is False
         assert "missing_params" in data
+
+
+class TestAskRoute:
+    async def test_ask_includes_trend_context(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+        api_app: Application,
+    ) -> None:
+        """POST /api/tasks/{alias}/ask sends trend summary to the LLM."""
+        from datetime import UTC, datetime, timedelta
+
+        from taskguard.llm.base import LLMResponse, Usage
+
+        alias = "ask-trend"
+        await client.post(
+            "/api/tasks",
+            json={"alias": alias, "log": str(tmp_path / "trend.log"), "pid": 9999},
+        )
+
+        metrics_store: MetricsStore = api_app["metrics_store"]
+        now = datetime.now(UTC)
+        for i in range(3):
+            await metrics_store.save_snapshot(
+                Snapshot(
+                    task_alias=alias,
+                    log_lines=[f"line {i}"],
+                    process=ProcessInfo(
+                        cpu_percent=float(i * 15),
+                        memory_percent=float(30 + i * 5),
+                        memory_working_set=1000000,
+                        status="running",
+                    ),
+                    timestamp=now - timedelta(minutes=30 * (2 - i)),
+                )
+            )
+
+        mock_provider = AsyncMock()
+        mock_provider.complete.return_value = LLMResponse(
+            content="CPU 呈上升趋势。",
+            usage=Usage(input_tokens=100, output_tokens=10),
+        )
+
+        # Replace the ask handler's provider with the mock
+        api_app["ask_handler"]._provider = mock_provider
+
+        resp = await client.post(f"/api/tasks/{alias}/ask", json={"question": "最近 CPU 怎么样？"})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["answer"] == "CPU 呈上升趋势。"
+
+        # Verify the LLM was called with trend context
+        assert mock_provider.complete.called
+        call_args = mock_provider.complete.call_args
+        messages = call_args.kwargs.get("messages") or call_args.args[1]
+        content = messages[0].content
+        assert "指标趋势" in content
+        assert "CPU" in content

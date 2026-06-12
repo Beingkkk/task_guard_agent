@@ -450,7 +450,7 @@ class TaskAskHandler:
         self._provider = provider
 
     _ASK_SYSTEM_PROMPT = """\
-你是 TaskGuard 智能监控助手。用户正在监控一个进程任务，会向你询问该任务的当前状态。
+你是 TaskGuard 智能监控助手。用户正在监控一个进程任务，会向你询问该任务的当前状态或历史趋势。
 
 你需要基于以下任务信息，用中文简洁准确地回答用户的问题。
 
@@ -459,6 +459,7 @@ class TaskAskHandler:
 2. 如果数据不足，明确告知用户
 3. 涉及技术状态时，用通俗语言解释
 4. 如果进程已退出，提醒用户检查
+5. 当问题涉及时序趋势（如“过去一小时有没有异常”“是不是突然飙升”）时，必须基于提供的指标趋势数据作答，并说明时间范围
 """
 
     async def ask(self, request: web.Request) -> web.Response:
@@ -517,6 +518,70 @@ class TaskAskHandler:
             logger.warning("Task ask LLM failed: %s", exc)
             return error_response("llm_error", str(exc), 503)
 
+    def _format_trend_summary(self, trend: dict[str, Any] | None) -> str:
+        """Format metrics_trend into a concise Chinese summary for the LLM."""
+        if not trend:
+            return ""
+
+        points = trend.get("points", [])
+        if not points:
+            return "\n指标趋势: 过去24小时内暂无足够数据。"
+
+        window_hours = trend.get("window_hours", 24)
+        interval_minutes = trend.get("interval_minutes", 30)
+
+        cpu_avgs: list[float] = []
+        cpu_maxes: list[float] = []
+        cpu_mins: list[float] = []
+        mem_avgs: list[float] = []
+        mem_maxes: list[float] = []
+        mem_mins: list[float] = []
+
+        for point in points:
+            cpu_stats = point.get("cpu_percent") or {}
+            mem_stats = point.get("memory_percent") or {}
+            if cpu_stats.get("avg") is not None:
+                cpu_avgs.append(float(cpu_stats["avg"]))
+            if cpu_stats.get("max") is not None:
+                cpu_maxes.append(float(cpu_stats["max"]))
+            if cpu_stats.get("min") is not None:
+                cpu_mins.append(float(cpu_stats["min"]))
+            if mem_stats.get("avg") is not None:
+                mem_avgs.append(float(mem_stats["avg"]))
+            if mem_stats.get("max") is not None:
+                mem_maxes.append(float(mem_stats["max"]))
+            if mem_stats.get("min") is not None:
+                mem_mins.append(float(mem_stats["min"]))
+
+        lines = [f"\n指标趋势 (过去{window_hours}小时，每{interval_minutes}分钟聚合):"]
+
+        def _avg(values: list[float]) -> float:
+            return sum(values) / len(values) if values else 0.0
+
+        if cpu_avgs:
+            lines.append(
+                f"  - CPU 占用: 平均 {_avg(cpu_avgs):.1f}%, 峰值 {max(cpu_maxes):.1f}%, 最低 {min(cpu_mins):.1f}%"
+            )
+        if mem_avgs:
+            lines.append(
+                f"  - 内存占用: 平均 {_avg(mem_avgs):.1f}%, 峰值 {max(mem_maxes):.1f}%, 最低 {min(mem_mins):.1f}%"
+            )
+
+        # Report CPU spikes where max is at least 2x the bucket average
+        spike_lines: list[str] = []
+        for point in points:
+            cpu_stats = point.get("cpu_percent") or {}
+            avg = cpu_stats.get("avg")
+            max_val = cpu_stats.get("max")
+            bucket = point.get("bucket", "")
+            if avg and max_val and avg > 0 and float(max_val) / float(avg) >= 2:
+                spike_lines.append(f"    {bucket}: CPU 达到 {float(max_val):.1f}%")
+        if spike_lines:
+            lines.append("  - CPU 尖峰时刻 (前3):")
+            lines.extend(spike_lines[:3])
+
+        return "\n".join(lines)
+
     def _build_context(self, alias: str, task_data: dict[str, Any]) -> str:
         """Build a context string from task data for the LLM."""
         lines = [f"任务名称: {alias}"]
@@ -538,6 +603,10 @@ class TaskAskHandler:
             lines.append(f"  - 工作集内存: {metrics.get('memory_working_set', 'N/A')} bytes")
             if metrics.get("exit_code") is not None:
                 lines.append(f"  - 退出码: {metrics['exit_code']}")
+
+        trend = task_data.get("metrics_trend")
+        if trend:
+            lines.append(self._format_trend_summary(trend))
 
         state_summary = task_data.get("latest_state_summary")
         if state_summary:
@@ -578,6 +647,9 @@ def setup_routes(
     process_handler = ProcessHandler()
     ask_handler = TaskAskHandler(store, provider)
     natural_handler = NaturalLanguageHandler(store, intent_parser)
+
+    # Expose handlers for testing / external customization
+    app["ask_handler"] = ask_handler
 
     log_handler = TaskLogHandler(store)
 

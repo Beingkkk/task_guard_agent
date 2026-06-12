@@ -29,7 +29,9 @@ let pythonProcess = null;
 let wsClient = null;
 
 function getIsDev() {
-  return !app.isPackaged || process.argv.includes('--dev');
+  // !!process.defaultApp is more reliable than !app.isPackaged for detecting
+  // development mode (the latter can be false in win-unpacked builds).
+  return !!process.defaultApp || process.argv.includes('--dev');
 }
 
 // ── Python Backend Lifecycle ────────────────────────────────────────────────
@@ -61,10 +63,20 @@ function startPythonBackend() {
 
     console.log(`[Backend] Starting: ${pythonPath} ${args.join(' ')} (cwd: ${cwd})`);
 
+    const env = {
+      ...process.env,
+      PYTHONIOENCODING: 'utf-8',
+    };
+    if (!getIsDev()) {
+      // Point the bundled backend to the external config/ shipped via extraResources
+      env.TASKGUARD_CONFIG_DIR = path.join(process.resourcesPath, 'config');
+    }
+
     pythonProcess = spawn(pythonPath, args, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      env,
     });
 
     pythonProcess.stdout.on('data', (data) => {
@@ -244,8 +256,12 @@ ipcMain.handle('dialog:show-open', async (_event, options) => {
  * renderer: window.electronAPI.invoke('api:request', { method, path, body })
  * main:     makes HTTP request, returns JSON
  */
+const DEFAULT_API_TIMEOUT_MS = 10000;
+const ASK_API_TIMEOUT_MS = 60000;
+
 ipcMain.handle('api:request', async (_event, { method, path, body }) => {
   return new Promise((resolve, reject) => {
+    const isAsk = typeof path === 'string' && path.endsWith('/ask');
     const options = {
       hostname: API_HOST,
       port: API_PORT,
@@ -254,7 +270,7 @@ ipcMain.handle('api:request', async (_event, { method, path, body }) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      timeout: 10000, // 10s timeout for backend API requests
+      timeout: isAsk ? ASK_API_TIMEOUT_MS : DEFAULT_API_TIMEOUT_MS,
     };
 
     const req = http.request(options, (res) => {

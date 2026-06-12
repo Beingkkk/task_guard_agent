@@ -162,9 +162,16 @@ async def main() -> None:
     data_dir = Path(os.environ.get("TASKGUARD_DATA_DIR", "./data")).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Support PyInstaller bundled executable: config files are extracted to _MEIPASS
-    meipass = getattr(sys, "_MEIPASS", None)
-    config_path = Path(meipass) / "config" if meipass else Path("config")
+    # Config directory resolution:
+    # 1. Explicit env var (Electron extraResources passes this in production)
+    # 2. PyInstaller one-file bundle (_MEIPASS)
+    # 3. Development working directory
+    if os.environ.get("TASKGUARD_CONFIG_DIR"):
+        config_path = Path(os.environ["TASKGUARD_CONFIG_DIR"])
+    elif getattr(sys, "_MEIPASS", None):
+        config_path = Path(sys._MEIPASS) / "config"
+    else:
+        config_path = Path("config")
 
     harness, store, metrics, provider = await _setup_harness(config_path, data_dir)
 

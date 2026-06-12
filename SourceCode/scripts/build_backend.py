@@ -4,12 +4,11 @@ Usage (from SourceCode/ directory, with venv activated):
     python scripts/build_backend.py
 
 Output:
-    dist/backend/taskguard-backend.exe
+    ../dist/backend/taskguard-backend.exe
 
 Relates-to: FR-4 Phase 4
 """
 
-import os
 import shutil
 import subprocess
 import sys
@@ -18,8 +17,9 @@ from pathlib import Path
 
 def main() -> int:
     source_dir = Path(__file__).parent.parent.resolve()
+    root_dir = source_dir.parent
     build_dir = source_dir / "build" / "pyinstaller"
-    dist_dir = source_dir / "dist" / "backend"
+    dist_dir = root_dir / "dist" / "backend"
 
     # Clean previous builds
     # dist_dir may contain runtime data/ (locked by a running backend)
@@ -106,11 +106,6 @@ def main() -> int:
     # Add hidden imports
     for mod in hidden_imports:
         cmd.extend(["--hidden-import", mod])
-
-    # Add data files (config directory)
-    config_dir = source_dir / "config"
-    if config_dir.exists():
-        cmd.extend(["--add-data", f"{config_dir}{os.pathsep}config"])
 
     cmd.append(str(entry_script))
 

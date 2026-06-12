@@ -35,6 +35,8 @@ cd frontend
 npm install
 ```
 
+前端依赖中包含 `marked`（Markdown 渲染）与 `ws`（WebSocket 客户端）；`electron-builder` 为开发依赖。
+
 ## 常用命令
 
 所有 Python 命令都在 `SourceCode/` 下、venv 激活后执行。
@@ -43,11 +45,14 @@ npm install
 # 启动后端 API 服务
 python -m taskguard.api.server
 
-# 启动 Electron 开发模式
+# 启动 Electron 开发模式（自动读取 --dev 标记启用开发菜单/日志）
 cd frontend
 npm run dev
-# Git Bash 里避免 npx，推荐：
-# ./node_modules/.bin/electron . --dev
+
+# 生产构建
+npm run build          # electron-builder，输出到 ../dist/electron
+npm run dist           # 同上（别名）
+npm run build:dir      # 只生成目录，不打包安装程序
 
 # 格式化与静态检查
 ruff format .
@@ -58,8 +63,9 @@ mypy taskguard/
 pytest -q                              # 全部
 pytest tests/test_models_task.py      # 单个文件
 pytest -k test_happy_path             # 单个用例名
+pytest tests/test_models_task.py::TestTaskDefaultConstruction::test_minimal  # 单个方法
 
-# 构建生产包（一键）
+# 构建生产包（一键，产物输出到项目根目录 dist/）
 cd SourceCode
 .\build.cmd
 ```
@@ -78,12 +84,21 @@ SourceCode/
 ├── frontend/              # Electron 前端
 │   ├── main.js            # 主进程：启 Python、窗口、托盘、IPC、WebSocket 代理
 │   ├── preload.js         # 安全桥接，暴露 window.electronAPI
-│   ├── renderer/          # 渲染进程 HTML/JS/CSS
+│   ├── package.json       # npm scripts 与 electron-builder 配置
+│   ├── renderer/          # 渲染进程
+│   │   ├── app.js         # API 请求、全局事件总线
+│   │   ├── services/      # websocket.js（WebSocket 客户端封装）
+│   │   ├── components/    # ProcessList / TaskGrid / TaskCard / TaskDetailPanel
+│   │   ├── index.html     # 主窗口 HTML
+│   │   └── styles.css     # 暗色主题样式
 │   └── assets/            # 图标资源（icon.png / tray-icon.png / icon.ico）
 ├── taskguard/             # Python 后端
-│   ├── api/               # aiohttp REST + WebSocket
+│   ├── api/               # aiohttp REST + WebSocket / EventPublisher
+│   │   ├── server.py      # 服务入口与生命周期
+│   │   ├── routes.py      # REST 路由 + TaskAskHandler
+│   │   └── websocket.py   # WebSocketManager 广播
 │   ├── agent.py           # AgentHarness 调度器
-│   ├── tools/             # Tool Registry
+│   ├── tools/             # Tool Registry（REST/前端统一入口）
 │   ├── collectors/        # 日志/进程采集器
 │   ├── analyzers/         # 进度提取：正则优先，LLM fallback
 │   ├── alerters/          # 告警规则引擎
@@ -92,6 +107,7 @@ SourceCode/
 │   └── models/            # 数据模型
 ├── config/                # 用户配置（config.yaml、*.template，JSON 文件 gitignored）
 ├── data/                  # 运行时数据（gitignored）
+├── scripts/               # build_all.py 等打包脚本
 └── tests/                 # pytest 测试
 
 Document/
@@ -104,11 +120,9 @@ Document/
 
 ## 架构总览
 
-后端是**分层 + 事件驱动**：
-
 ```
 Electron 渲染进程
-  ↕ IPC
+  ↕ IPC  (api:request / renderMarkdown / shellOpenPath / showOpenDialog)
 Electron 主进程（frontend/main.js）
   ↕ HTTP / WebSocket
 Python API 服务（taskguard/api/server.py）
@@ -120,6 +134,10 @@ Python API 服务（taskguard/api/server.py）
 ```
 
 **AgentHarness** 按配置周期（默认 30s）并发采集所有任务。每个任务独立协程，跨任务用 `asyncio.Semaphore` 限制并发数（默认 12）。采集完成后通过注入点调用分析器、告警器、崩溃处理器，并广播事件给前端。
+
+**事件流**：采集/分析/告警结果通过 `EventPublisher` 派发，由 `WebSocketManager` 推送给所有连接的渲染进程；REST 路由只返回请求-响应数据，不持持久连接。
+
+**前端通信**：渲染进程通过 `window.electronAPI.invoke('api:request', ...)` 发起 HTTP，由主进程 `http.request` 代理到 Python 后端。`api:request` 普通请求超时 10s，`/ask` 等 LLM 路径单独延长至 60s。
 
 ## 核心设计原则
 
@@ -136,7 +154,14 @@ Python API 服务（taskguard/api/server.py）
 **用户配置**（`SourceCode/config/`，受 git 跟踪）：
 
 - `config.yaml` — 主配置：采集间隔、并发、阈值、告警、LLM、崩溃处理。
-- `config-claude.json` — Claude 密钥（该 JSON 文件 gitignored，只提交 `.template`）。
+- `config-claude.json` — Claude 密钥（该 JSON 文件 gitignored，只提交 `.template`）。模板格式：
+  ```json
+  {
+    "llm_base_url": "https://api.kimi.com/coding/",
+    "auth_key": "",
+    "model_name": ""
+  }
+  ```
 - `tasks.yaml` — 启动时加载的任务定义。
 
 **运行时数据**（`SourceCode/data/`，gitignored）：
@@ -190,5 +215,7 @@ Relates-to: FR-N
 - `Document/adopt-baseline.md` — SDD 基线与技术债。
 - `Document/changes/proposal-0009.md` — 托盘关闭修复 + 打包图标资源。
 - `Document/changes/proposal-0010.md` — 标题栏按钮 hover 图标修复。
+- `Document/changes/proposal-0011.md` — 任务详情面板指标趋势图与 LLM 趋势上下文。
+- `Document/changes/proposal-0012.md` — `/ask` 接口前端超时延长。
 - `SourceCode/pyproject.toml` — 唯一依赖来源。
 - `SourceCode/build.cmd` — 一键打包脚本。

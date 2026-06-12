@@ -221,6 +221,9 @@ class TaskDetailPanel {
       html += this._infoRow('工作集内存', this._formatBytes(memWset));
     }
 
+    // Metrics trend chart
+    html += this._renderTrendSection(data.metrics_trend);
+
     // AI state summary
     if (stateSummary && (stateSummary.summary || stateSummary.status)) {
       html += this._renderStateSummarySection(stateSummary);
@@ -233,6 +236,173 @@ class TaskDetailPanel {
     html += this._renderLogSection(logSource);
 
     this.infoEl.innerHTML = html;
+
+    // Draw the trend chart after the DOM is updated
+    this._drawTrendChart(data.metrics_trend);
+  }
+
+  _renderTrendSection(metricsTrend) {
+    let html = '<div class="detail-trend-section">';
+    html += '<div class="detail-section-header">指标趋势</div>';
+
+    const hasData = metricsTrend?.points && metricsTrend.points.length >= 2;
+    if (!hasData) {
+      html += '<div class="detail-trend-empty">数据不足，趋势将在更多采集周期后生成</div>';
+      html += '</div>';
+      return html;
+    }
+
+    html += '<div class="detail-trend-legend">';
+    html += '<span class="trend-legend-item cpu"><span class="trend-dot"></span> CPU</span>';
+    html += '<span class="trend-legend-item memory"><span class="trend-dot"></span> 内存</span>';
+    html += '</div>';
+    html += '<div class="detail-trend-chart-wrapper">';
+    html += '<canvas id="trend-chart" class="trend-canvas" width="320" height="120"></canvas>';
+    html += '<div id="trend-tooltip" class="trend-tooltip hidden"></div>';
+    html += '</div>';
+    html += '<div class="detail-trend-window">';
+    html += `过去 ${metricsTrend.window_hours || 24} 小时 · 每 ${metricsTrend.interval_minutes || 30} 分钟聚合`;
+    html += '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  _drawTrendChart(metricsTrend) {
+    const canvas = this.infoEl?.querySelector('#trend-chart');
+    const tooltip = this.infoEl?.querySelector('#trend-tooltip');
+    if (!canvas || !tooltip) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const points = metricsTrend?.points || [];
+    if (points.length < 2) return;
+
+    // Handle high-DPI displays
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width;
+    const height = rect.height;
+    const padding = { top: 8, right: 8, bottom: 20, left: 32 };
+    const chartWidth = Math.max(1, width - padding.left - padding.right);
+    const chartHeight = Math.max(1, height - padding.top - padding.bottom);
+
+    // Collect values
+    const cpuValues = points.map((p) => p.cpu_percent?.avg).filter((v) => typeof v === 'number');
+    const memValues = points.map((p) => p.memory_percent?.avg).filter((v) => typeof v === 'number');
+    const allValues = [...cpuValues, ...memValues];
+    if (allValues.length === 0) return;
+
+    const maxValue = Math.max(...allValues, 100);
+    const minValue = Math.min(...allValues, 0);
+    const valueRange = Math.max(maxValue - minValue, 1);
+
+    // Clear
+    ctx.clearRect(0, 0, width, height);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    const gridCount = 4;
+    for (let i = 0; i <= gridCount; i++) {
+      const yRatio = i / gridCount;
+      const y = padding.top + chartHeight * (1 - yRatio);
+      const value = minValue + valueRange * yRatio;
+
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(width - padding.right, y);
+      ctx.stroke();
+
+      ctx.fillText(value.toFixed(0) + '%', padding.left - 4, y);
+    }
+
+    const drawLine = (values, color) => {
+      if (values.length === 0) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      values.forEach((value, index) => {
+        const x = padding.left + (chartWidth * index) / (points.length - 1);
+        const y = padding.top + chartHeight * (1 - (value - minValue) / valueRange);
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    };
+
+    drawLine(cpuValues, '#38bdf8'); // sky-400
+    drawLine(memValues, '#a78bfa'); // violet-400
+
+    // X-axis time labels (first, middle, last)
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const labelIndices = [0, Math.floor((points.length - 1) / 2), points.length - 1].filter((v, i, a) => a.indexOf(v) === i);
+    labelIndices.forEach((index) => {
+      const x = padding.left + (chartWidth * index) / (points.length - 1);
+      const label = this._formatTrendTime(points[index].bucket);
+      ctx.fillText(label, x, height - padding.bottom + 4);
+    });
+
+    // Hover interaction
+    const getPointAtX = (clientX) => {
+      const chartRect = canvas.getBoundingClientRect();
+      const x = clientX - chartRect.left;
+      if (x < padding.left || x > width - padding.right) return null;
+      const ratio = (x - padding.left) / chartWidth;
+      const index = Math.round(ratio * (points.length - 1));
+      return { index, x: padding.left + (chartWidth * index) / (points.length - 1) };
+    };
+
+    canvas.onmousemove = (e) => {
+      const hovered = getPointAtX(e.clientX);
+      if (!hovered) {
+        tooltip.classList.add('hidden');
+        return;
+      }
+      const point = points[hovered.index];
+      const cpu = point.cpu_percent;
+      const mem = point.memory_percent;
+      let content = `<div class="trend-tooltip-time">${this._formatTrendTime(point.bucket)}</div>`;
+      if (cpu?.avg != null) {
+        content += `<div>CPU: 平均 ${cpu.avg.toFixed(1)}% 峰值 ${cpu.max.toFixed(1)}%</div>`;
+      }
+      if (mem?.avg != null) {
+        content += `<div>内存: 平均 ${mem.avg.toFixed(1)}% 峰值 ${mem.max.toFixed(1)}%</div>`;
+      }
+      tooltip.innerHTML = content;
+      tooltip.classList.remove('hidden');
+
+      // Position tooltip near the point but keep inside wrapper
+      const wrapperRect = canvas.parentElement.getBoundingClientRect();
+      const tooltipX = hovered.x - wrapperRect.left;
+      const tooltipY = padding.top - wrapperRect.top;
+      tooltip.style.left = `${Math.min(tooltipX + 8, wrapperRect.width - tooltip.offsetWidth - 4)}px`;
+      tooltip.style.top = `${Math.max(tooltipY, 4)}px`;
+    };
+
+    canvas.onmouseleave = () => {
+      tooltip.classList.add('hidden');
+    };
+  }
+
+  _formatTrendTime(bucketValue) {
+    if (!bucketValue) return '';
+    const date = new Date(bucketValue);
+    if (Number.isNaN(date.getTime())) return '';
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
   }
 
   _renderStateSummarySection(stateSummary) {

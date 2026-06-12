@@ -7,12 +7,12 @@ Or use the convenience wrapper (Windows):
     .\\build.cmd
 
 Steps:
-    1. Build Python backend with PyInstaller → dist/backend/taskguard-backend.exe
-    2. Build Electron frontend with electron-builder → dist/electron/
+    1. Build Python backend with PyInstaller → ../dist/backend/taskguard-backend.exe
+    2. Build Electron frontend with electron-builder → ../dist/electron/
 
 Output:
-    dist/electron/TaskGuard Setup X.Y.Z.exe    (NSIS installer)
-    dist/electron/TaskGuard-Portable-X.Y.Z.exe (portable)
+    ../dist/electron/TaskGuard Setup X.Y.Z.exe    (NSIS installer)
+    ../dist/electron/TaskGuard-Portable-X.Y.Z.exe (portable)
 
 Relates-to: FR-4 Phase 4
 """
@@ -231,11 +231,11 @@ def build_frontend(source_dir: Path, version: str) -> int:
     return 0
 
 
-def print_summary(source_dir: Path, version: str, total_time: float) -> None:
+def print_summary(source_dir: Path, root_dir: Path, version: str, total_time: float) -> None:
     """Print build summary with output files."""
     _banner(f"Build Complete — {total_time:.1f}s Total")
 
-    dist = source_dir / "dist"
+    dist = root_dir / "dist"
     if not dist.exists():
         _p("WARN", "dist/ directory not found")
         return
@@ -266,6 +266,7 @@ def print_summary(source_dir: Path, version: str, total_time: float) -> None:
 
 def main() -> NoReturn:
     source_dir = Path(__file__).parent.parent.resolve()
+    root_dir = source_dir.parent
     version = _read_pyproject_version(source_dir)
 
     print()
@@ -275,6 +276,7 @@ def main() -> NoReturn:
     )
     print(f"  {_C.BOLD}╚══════════════════════════════════════════════════════════════╝{_C.RESET}")
     print(f"  Source: {source_dir}")
+    print(f"  Output: {root_dir / 'dist'}")
 
     # Sync version
     _sync_version_to_package_json(source_dir, version)
@@ -297,7 +299,7 @@ def main() -> NoReturn:
         sys.exit(rc)
 
     total = time.monotonic() - overall_start
-    print_summary(source_dir, version, total)
+    print_summary(source_dir, root_dir, version, total)
 
     sys.exit(0)
 

@@ -1,6 +1,6 @@
 {
   "name": "taskguard-frontend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "TaskGuard Electron frontend",
   "main": "main.js",
   "scripts": {
@@ -25,7 +25,7 @@
     "appId": "com.taskguard.app",
     "productName": "TaskGuard",
     "directories": {
-      "output": "../dist/electron"
+      "output": "../../dist/electron"
     },
     "files": [
       "main.js",
@@ -36,8 +36,15 @@
     ],
     "extraResources": [
       {
-        "from": "../dist/backend",
+        "from": "../../dist/backend",
         "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../config",
+        "to": "config",
         "filter": [
           "**/*"
         ]

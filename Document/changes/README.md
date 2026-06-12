@@ -82,4 +82,9 @@ PROPOSED → APPROVED → IMPLEMENTED → ARCHIVED
 
 ## 现有提案
 
-> 暂无提案。首个提案编号从 `0001` 开始。
+| 编号 | 标题 | 类型 | 状态 |
+|---|---|---|---|
+| [proposal-0009](proposal-0009.md) | 托盘关闭修复 + 打包图标资源 | Type-C | IMPLEMENTED |
+| [proposal-0010](proposal-0010.md) | 标题栏按钮 hover 图标修复 | Type-C | IMPLEMENTED |
+| [proposal-0011](proposal-0011.md) | 任务详情面板增加指标趋势可视化与 LLM 趋势上下文 | Type-B | IMPLEMENTED |
+| [proposal-0012](proposal-0012.md) | 延长 LLM 问答接口的前端超时时间 | Type-C | IMPLEMENTED |

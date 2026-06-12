@@ -12,11 +12,10 @@ setlocal EnableDelayedExpansion
 ::   - electron-builder installed (cd frontend && npm install -D electron-builder)
 ::
 :: Output:
-::   dist/electron/TaskGuard Setup X.Y.Z.exe    (NSIS installer)
-::   dist/electron/TaskGuard-Portable-X.Y.Z.exe (portable)
+::   ..\dist\electron\TaskGuard Setup X.Y.Z.exe    (NSIS installer)
+::   ..\dist\electron\TaskGuard-Portable-X.Y.Z.exe (portable)
 :: ============================================================================
 
-echo.
 echo   ================================================================
 echo    TaskGuard One-Click Build (Windows)
 echo   ================================================================

@@ -63,7 +63,7 @@ class APIServer:
         app["provider"] = self._provider
 
         # Setup routes
-        setup_routes(app, self._provider)
+        setup_routes(app, self._provider, self._harness)
         setup_websocket_routes(app)
 
         # Wire event publisher into harness if available
@@ -173,7 +173,7 @@ async def main() -> None:
     await metrics.open()
 
     # Register tools
-    register_builtin_tools(store, metrics)
+    register_builtin_tools(store, metrics, harness=harness)
 
     # Start server
     server = APIServer(store, metrics, harness=harness, provider=provider)

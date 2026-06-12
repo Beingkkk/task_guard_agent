@@ -122,6 +122,19 @@ class MetricsStore:
             await self._conn.close()
             self._conn = None
 
+    async def clear_task_history(self, alias: str) -> None:
+        """Delete all persisted history for a given alias.
+
+        Called when a task is replaced so that stale metrics/progress/logs do not
+        leak into the new monitoring session.
+        """
+        if self._conn is None:
+            raise RuntimeError("Store not open")
+        tables = ("logs", "metrics", "progress", "state_summary", "alerts")
+        for table in tables:
+            await self._conn.execute(f"DELETE FROM {table} WHERE alias = ?", (alias,))
+        await self._conn.commit()
+
     async def save_snapshot(self, snapshot: Snapshot) -> None:
         """Persist a snapshot in a single transaction."""
         if self._conn is None:

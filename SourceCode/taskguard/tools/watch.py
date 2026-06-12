@@ -4,15 +4,17 @@ Relates-to: FR-1
 """
 
 import asyncio
+import logging
 from typing import Any
 
 from taskguard.models.errors import TaskNotFoundError, TaskRegistrationError
 from taskguard.models.task import Task
+from taskguard.storage.metrics_store import MetricsStore
 from taskguard.storage.task_store import TaskStore
 from taskguard.tools.base import BaseTool, ToolResult
 from taskguard.utils.log_source_uri import LogSource as LogSourceParser
 
-
+logger = logging.getLogger(__name__)
 async def _resolve_pid(pid_raw: Any) -> tuple[int | None, list[dict[str, Any]] | None]:
     """Resolve pid_raw to an integer PID.
 
@@ -51,8 +53,13 @@ class WatchTaskTool(BaseTool):
     name = "watch_task"
     description = "Register a new monitoring task"
 
-    def __init__(self, store: TaskStore | None = None) -> None:
+    def __init__(
+        self,
+        store: TaskStore | None = None,
+        metrics_store: MetricsStore | None = None,
+    ) -> None:
         self._store = store
+        self._metrics_store = metrics_store
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         if self._store is None:
@@ -62,6 +69,9 @@ class WatchTaskTool(BaseTool):
         log_uri = params.get("log", "").strip()
         pid_raw = params.get("pid")
         revise = params.get("revise", "false").lower() in ("true", "yes", "1")
+        replace = params.get("replace", False)
+        if isinstance(replace, str):
+            replace = replace.lower() in ("true", "yes", "1")
 
         if not alias:
             return ToolResult(ok=False, error_code="invalid_alias", message="Alias is required")
@@ -112,6 +122,23 @@ class WatchTaskTool(BaseTool):
                 error_code="missing_source",
                 message="At least one of --pid or --log is required",
             )
+
+        # If replace is requested, delete the existing task and its history first.
+        existing_aliases = {t.alias for t in self._store.list_all()}
+        if replace and alias in existing_aliases:
+            existing = await self._store.get(alias)
+            if existing.source == "yaml":
+                return ToolResult(
+                    ok=False,
+                    error_code="alias_managed_by_yaml",
+                    message=f"Alias '{alias}' is managed by tasks.yaml; remove it from the file instead",
+                )
+            await self._store.remove(alias)
+            if self._metrics_store is not None:
+                try:
+                    await self._metrics_store.clear_task_history(alias)
+                except Exception:
+                    logger.exception("Failed to clear history for replaced task %s", alias)
 
         tool_hint = params.get("tool_hint")
         if tool_hint:

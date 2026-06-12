@@ -3,6 +3,7 @@
 Relates-to: FR-2
 """
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -715,4 +716,99 @@ class TestCrashHandlerInjection:
             await harness.run_once()
 
         mock_dumper.dump.assert_not_called()
+        await harness._cleanup()
+
+
+class TestImmediateCollectionAndLocks:
+    async def test_collect_one_triggers_single_task_collection(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(cpu_percent=10.0, status="running")),
+        ) as mock_process:
+            result = await harness.collect_one("a")
+            assert result is True
+            mock_process.assert_awaited_once_with(12345)
+
+        assert mock_metrics_store.save_snapshot.call_count == 1
+        await harness._cleanup()
+
+    async def test_collect_one_unknown_alias_returns_false(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        mock_store.list_all.return_value = []
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        result = await harness.collect_one("missing")
+        assert result is False
+        await harness._cleanup()
+
+    async def test_per_task_lock_serializes_concurrent_collections(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        """Two overlapping collections for the same task must run sequentially."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+
+        harness = AgentHarness(mock_store, mock_metrics_store)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=["line"])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        active = 0
+        max_active = 0
+
+        async def tracking_collect(pid: int) -> ProcessInfo:
+            nonlocal active, max_active
+            active += 1
+            max_active = max(max_active, active)
+            await asyncio.sleep(0.05)
+            active -= 1
+            return ProcessInfo(cpu_percent=10.0, status="running")
+
+        with patch.object(harness._process_collector, "collect", AsyncMock(side_effect=tracking_collect)):
+            await asyncio.gather(harness.collect_one("a"), harness.collect_one("a"))
+
+        assert max_active == 1, "Same-task collections ran concurrently"
+        assert mock_metrics_store.save_snapshot.call_count == 2
+        await harness._cleanup()
+
+    async def test_run_collects_immediately_before_first_sleep(
+        self, mock_store: MagicMock, mock_metrics_store: MagicMock
+    ) -> None:
+        """run() should call _run_cycle before the first sleep interval."""
+        task = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), pid=12345)
+        mock_store.list_all.return_value = [task]
+        mock_store.load = AsyncMock()
+        mock_metrics_store.open = AsyncMock()
+
+        harness = AgentHarness(mock_store, mock_metrics_store, collect_interval=3600)
+        mock_collector = MagicMock()
+        mock_collector.collect_logs = AsyncMock(return_value=[])
+        mock_collector.close = AsyncMock()
+        harness.register_collector("file", mock_collector)
+
+        with patch.object(
+            harness._process_collector,
+            "collect",
+            AsyncMock(return_value=ProcessInfo(status="running")),
+        ) as mock_process:
+            # Start run() but shut it down quickly after the first cycle.
+            run_task = asyncio.create_task(harness.run())
+            await asyncio.sleep(0.01)
+            harness.shutdown()
+            await run_task
+
+        mock_process.assert_awaited_once_with(12345)
         await harness._cleanup()

@@ -3,6 +3,7 @@
 Relates-to: FR-4
 """
 
+import asyncio
 import json
 import logging
 from collections import deque
@@ -12,6 +13,7 @@ from typing import Any
 
 from aiohttp import web
 
+from taskguard.agent import AgentHarness
 from taskguard.interaction.intent_parser import IntentParser
 from taskguard.llm.base import BaseProvider, LLMError, Message
 from taskguard.storage.task_store import TaskStore
@@ -78,8 +80,9 @@ class TaskHandler:
         except json.JSONDecodeError:
             return error_response("invalid_json", "Request body must be valid JSON", 400)
 
+        alias = body.get("alias", "")
         params: dict[str, Any] = {
-            "alias": body.get("alias", ""),
+            "alias": alias,
             "log": body.get("log", ""),
             "_store": self._store,
         }
@@ -87,6 +90,8 @@ class TaskHandler:
             params["pid"] = body["pid"]
         if "tool_hint" in body:
             params["tool_hint"] = body["tool_hint"]
+        if body.get("replace"):
+            params["replace"] = True
 
         tool = ToolRegistry.get("watch_task")
         if tool is None:
@@ -101,6 +106,10 @@ class TaskHandler:
                 data = result.data
             else:
                 data = {}
+            # Trigger an immediate collection for the new/replaced task.
+            harness = request.app.get("harness")
+            if harness is not None and alias:
+                asyncio.create_task(harness.collect_one(alias))
             return json_response(data, status=201)
         return _tool_result_to_http(result)
 
@@ -562,8 +571,13 @@ class TaskAskHandler:
         return "\n".join(lines)
 
 
-def setup_routes(app: web.Application, provider: BaseProvider | None = None) -> None:
+def setup_routes(
+    app: web.Application,
+    provider: BaseProvider | None = None,
+    harness: AgentHarness | None = None,
+) -> None:
     """Register all REST API routes on the aiohttp app."""
+    app["harness"] = harness
     store: TaskStore = app["store"]
     intent_parser: IntentParser | None = app.get("intent_parser")
 

@@ -3,11 +3,13 @@
 Relates-to: FR-1
 """
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from taskguard.models.task import LogSource, Task
+from taskguard.storage.metrics_store import MetricsStore
 from taskguard.storage.task_store import TaskStore
 from taskguard.tools.watch import UnwatchTaskTool, WatchTaskTool
 
@@ -44,6 +46,58 @@ class TestWatchTaskTool:
         result = await tool.execute({"alias": "a", "log": "file://C:\\test.log"})
         assert result.ok is False
         assert result.error_code == "alias_exists"
+
+    @pytest.mark.asyncio
+    async def test_replace_existing_task(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        metrics = MetricsStore(":memory:")
+        await metrics.open()
+        tool = WatchTaskTool(store, metrics)
+
+        await tool.execute({"alias": "a", "pid": 1111})
+        # Simulate stale history
+        from taskguard.models.snapshot import ProcessInfo, Snapshot
+
+        await metrics.save_snapshot(
+            Snapshot(
+                task_alias="a",
+                log_lines=["old"],
+                process=ProcessInfo(status="exited"),
+                timestamp=datetime.now(UTC),
+            )
+        )
+
+        result = await tool.execute({"alias": "a", "pid": 2222, "replace": True})
+        assert result.ok is True
+        assert result.data.pid == 2222
+
+        # History should be cleared
+        assert await metrics.query_metrics("a", since=datetime.now(UTC) - timedelta(minutes=1)) == []
+        assert await metrics.query_logs("a", since=datetime.now(UTC) - timedelta(minutes=1)) == []
+        await metrics.close()
+
+    @pytest.mark.asyncio
+    async def test_replace_yaml_managed_forbidden(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        metrics = MetricsStore(":memory:")
+        await metrics.open()
+        tool = WatchTaskTool(store, metrics)
+
+        t = Task(alias="a", log_source=LogSource(type="file", path="C:\\test.log"), source="yaml")
+        await store.add(t)
+
+        result = await tool.execute({"alias": "a", "pid": 2222, "replace": True})
+        assert result.ok is False
+        assert result.error_code == "alias_managed_by_yaml"
+        await metrics.close()
+
+    @pytest.mark.asyncio
+    async def test_replace_nonexistent_acts_like_normal_create(self, tmp_path) -> None:
+        store = TaskStore(tmp_path)
+        tool = WatchTaskTool(store)
+        result = await tool.execute({"alias": "a", "pid": 12345, "replace": True})
+        assert result.ok is True
+        assert result.data.pid == 12345
 
     @pytest.mark.asyncio
     async def test_invalid_uri(self, tmp_path) -> None:

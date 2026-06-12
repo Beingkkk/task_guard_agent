@@ -5,7 +5,7 @@ Relates-to: FR-2
 
 from datetime import UTC, datetime, timedelta
 
-from taskguard.models.snapshot import ProcessInfo, Snapshot
+from taskguard.models.snapshot import ProcessInfo, ProgressInfo, Snapshot
 from taskguard.models.state_summary import StateSummary
 from taskguard.storage.metrics_store import MetricsStore
 
@@ -111,6 +111,43 @@ class TestMetricsStore:
         assert rows == []
         metrics = await store.query_metrics("dl", since=datetime.now(UTC))
         assert metrics == []
+        await store.close()
+
+    async def test_clear_task_history_removes_all_records_for_alias(self) -> None:
+        store = MetricsStore(":memory:")
+        await store.open()
+        now = datetime.now(UTC)
+
+        # Insert records for alias "a"
+        snap_a = Snapshot(
+            task_alias="a",
+            log_lines=["a1"],
+            process=ProcessInfo(status="running"),
+            timestamp=now,
+        )
+        await store.save_snapshot(snap_a)
+        await store.save_progress("a", now, ProgressInfo(percentage=10.0, extracted_by="regex"))
+        await store.save_state_summary("a", now, StateSummary(status="healthy", summary="ok"))
+
+        # Insert records for alias "b" (should remain)
+        snap_b = Snapshot(
+            task_alias="b",
+            log_lines=["b1"],
+            process=ProcessInfo(status="running"),
+            timestamp=now,
+        )
+        await store.save_snapshot(snap_b)
+
+        await store.clear_task_history("a")
+
+        assert await store.query_logs("a", since=now - timedelta(minutes=1)) == []
+        assert await store.query_metrics("a", since=now - timedelta(minutes=1)) == []
+        assert await store.query_progress("a", since=now - timedelta(minutes=1)) == []
+        assert await store.query_state_summary("a", since=now - timedelta(minutes=1)) == []
+
+        # Alias b records should still exist
+        assert len(await store.query_logs("b", since=now - timedelta(minutes=1))) == 1
+        assert len(await store.query_metrics("b", since=now - timedelta(minutes=1))) == 1
         await store.close()
 
     async def test_save_and_query_state_summary(self) -> None:

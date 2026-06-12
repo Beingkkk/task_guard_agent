@@ -35,6 +35,7 @@ class AgentHarness:
         self._running = False
         self._collectors: dict[str, BaseCollector] = {}
         self._process_collector = ProcessCollector()
+        self._task_locks: dict[str, asyncio.Lock] = {}
         # Injection points for FR-3/4/5/6
         self.analyzer: Any = None
         self.alerter: Any = None
@@ -48,17 +49,45 @@ class AgentHarness:
     def _get_collector(self, source_type: str) -> BaseCollector | None:
         return self._collectors.get(source_type)
 
+    def _get_task_lock(self, alias: str) -> asyncio.Lock:
+        """Return the per-task collection lock, creating it if necessary."""
+        if alias not in self._task_locks:
+            self._task_locks[alias] = asyncio.Lock()
+        return self._task_locks[alias]
+
     async def run(self) -> None:
         """Main loop: boot, collect, shutdown."""
         await self._store.load()
         await self._metrics_store.open()
         self._running = True
         try:
+            # Collect immediately on startup so the UI does not wait for the first interval.
+            await self._run_cycle()
             while self._running:
-                await self._run_cycle()
                 await asyncio.sleep(self._interval)
+                if not self._running:
+                    break
+                await self._run_cycle()
         finally:
             await self._cleanup()
+
+    async def collect_one(self, alias: str) -> bool:
+        """Collect a single task right now.
+
+        Returns True if the task was found and collected, False otherwise.
+        This is serialized with periodic collection via the per-task lock.
+        """
+        task = next((t for t in self._store.list_all() if t.alias == alias), None)
+        if task is None:
+            return False
+        async with self._get_task_lock(alias):
+            try:
+                await self._collect_task(task)
+            except CollectionError as exc:
+                logger.error("Collection failed for %s: %s", alias, exc)
+            except Exception:
+                logger.exception("Unexpected error collecting %s", alias)
+        return True
 
     async def run_once(self) -> None:
         """Run a single collection cycle (for testing)."""
@@ -81,7 +110,7 @@ class AgentHarness:
         semaphore = asyncio.Semaphore(self._concurrency)
 
         async def _collect_one(task: Any) -> None:
-            async with semaphore:
+            async with semaphore, self._get_task_lock(task.alias):
                 try:
                     await self._collect_task(task)
                 except CollectionError as exc:

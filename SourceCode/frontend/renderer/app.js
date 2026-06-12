@@ -344,6 +344,7 @@
       const payload = {
         alias,
         pid: this.currentProc.pid,
+        replace: true,
       };
       if (log) {
         payload.log = log;
@@ -357,6 +358,8 @@
           showToast(`任务 "${alias}" 注册成功`, 'success');
           this.hide();
           await loadTasks();
+        } else if (resp.status === 403) {
+          showToast(resp.data?.message || '该任务由配置文件管理，无法覆盖', 'error');
         } else if (resp.status === 409) {
           showToast(resp.data?.message || '任务已存在', 'error');
         } else {
